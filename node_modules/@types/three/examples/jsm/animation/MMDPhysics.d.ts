@@ -115,10 +115,5 @@ export class Constraint {
 }
 
 export class MMDPhysicsHelper extends Object3D {
-    mesh: THREE.SkinnedMesh;
-    physics: MMDPhysics;
-    materials: [THREE.MeshBasicMaterial, THREE.MeshBasicMaterial, THREE.MeshBasicMaterial];
-
-    constructor(mesh: THREE.SkinnedMesh, physics: MMDPhysics);
-    dispose(): void;
+    constructor();
 }

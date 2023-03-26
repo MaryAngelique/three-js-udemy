@@ -1,4 +1,4 @@
-import { OffscreenCanvas, Texture } from './Texture';
+import { Texture } from './Texture';
 import { Mapping, Wrapping, TextureFilter, PixelFormat, TextureDataType } from '../constants';
 
 export class CanvasTexture extends Texture {
@@ -15,7 +15,7 @@ export class CanvasTexture extends Texture {
      * @param [encoding=THREE.LinearEncoding]
      */
     constructor(
-        canvas: TexImageSource | OffscreenCanvas,
+        canvas: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap,
         mapping?: Mapping,
         wrapS?: Wrapping,
         wrapT?: Wrapping,

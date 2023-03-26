@@ -23,6 +23,4 @@ export class PolarGridHelper extends LineSegments {
      * @default 'PolarGridHelper'
      */
     type: string;
-
-    dispose(): void;
 }

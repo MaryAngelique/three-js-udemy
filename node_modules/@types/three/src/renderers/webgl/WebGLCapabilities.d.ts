@@ -20,7 +20,6 @@ export class WebGLCapabilities {
     vertexTextures: boolean;
     floatFragmentTextures: boolean;
     floatVertexTextures: boolean;
-    maxSamples: number;
 
     getMaxAnisotropy(): number;
     getMaxPrecision(precision: string): string;
