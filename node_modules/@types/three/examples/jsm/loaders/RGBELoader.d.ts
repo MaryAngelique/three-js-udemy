@@ -7,6 +7,7 @@ export interface RGBE {
     header: string;
     gamma: number;
     exposure: number;
+    format: PixelFormat;
     type: TextureDataType;
 }
 

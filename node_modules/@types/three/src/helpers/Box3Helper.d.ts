@@ -15,6 +15,4 @@ export class Box3Helper extends LineSegments {
     type: string;
 
     box: Box3;
-
-    dispose(): void;
 }
