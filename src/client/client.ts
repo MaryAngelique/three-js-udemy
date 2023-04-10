@@ -6,7 +6,7 @@ import { GUI } from 'dat.gui'
 const scene = new THREE.Scene()
 scene.add(new THREE.AxesHelper(5))
 
-const light = new THREE.PointLight(0xffffff, 2)
+const light = new THREE.PointLight(0xffffff, 1)
 light.position.set(10, 10, 10)
 scene.add(light)
 
@@ -30,47 +30,30 @@ const icosahedronGeometry = new THREE.IcosahedronGeometry(1, 0)
 const planeGeometry = new THREE.PlaneGeometry()
 const torusKnotGeometry = new THREE.TorusKnotGeometry()
 
-const material = new THREE.MeshPhysicalMaterial({})
-material.reflectivity = 0
-material.transmission = 1.0
-material.roughness = 0.2
-material.metalness = 0
-material.clearcoat = 0.3
-material.clearcoatRoughness = 0.25
-material.color = new THREE.Color(0xffffff)
-material.ior = 1.2
-material.thickness = 10.0
+const threeTone = new THREE.TextureLoader().load('img/threeTone.jpg')
+threeTone.minFilter = THREE.NearestFilter
+threeTone.magFilter = THREE.NearestFilter
 
-// const texture = new THREE.TextureLoader().load('img/grid.png')
-// material.map = texture
+const fourTone = new THREE.TextureLoader().load('img/fourTone.jpg')
+fourTone.minFilter = THREE.NearestFilter
+fourTone.magFilter = THREE.NearestFilter
 
-const pmremGenerator = new THREE.PMREMGenerator(renderer)
-const envTexture = new THREE.CubeTextureLoader().load(
-    [
-        'img/px_50.png',
-        'img/nx_50.png',
-        'img/py_50.png',
-        'img/ny_50.png',
-        'img/pz_50.png',
-        'img/nz_50.png',
-    ],
-    () => {
-        material.envMap = pmremGenerator.fromCubemap(envTexture).texture
-        pmremGenerator.dispose()
-        scene.background = material.envMap
-    }
-)
+const fiveTone = new THREE.TextureLoader().load('img/fiveTone.jpg')
+fiveTone.minFilter = THREE.NearestFilter
+fiveTone.magFilter = THREE.NearestFilter
+
+const material: THREE.MeshToonMaterial = new THREE.MeshToonMaterial()
 
 const cube = new THREE.Mesh(boxGeometry, material)
 cube.position.x = 5
 scene.add(cube)
 
 const sphere = new THREE.Mesh(sphereGeometry, material)
-sphere.position.x = 0
+sphere.position.x = 3
 scene.add(sphere)
 
 const icosahedron = new THREE.Mesh(icosahedronGeometry, material)
-icosahedron.position.x = 3
+icosahedron.position.x = 0
 scene.add(icosahedron)
 
 const plane = new THREE.Mesh(planeGeometry, material)
@@ -98,9 +81,30 @@ const options = {
         BackSide: THREE.BackSide,
         DoubleSide: THREE.DoubleSide,
     },
+    gradientMap: {
+        Default: null,
+        threeTone: 'threeTone',
+        fourTone: 'fourTone',
+        fiveTone: 'fiveTone',
+    },
 }
 
 const gui = new GUI()
+
+const data = {
+    lightColor: light.color.getHex(),
+    color: material.color.getHex(),
+    gradientMap: 'threeTone',
+}
+
+material.gradientMap = threeTone
+
+const lightFolder = gui.addFolder('THREE.Light')
+lightFolder.addColor(data, 'lightColor').onChange(() => {
+    light.color.setHex(Number(data.lightColor.toString().replace('#', '0x')))
+})
+lightFolder.add(light, 'intensity', 0, 4)
+
 const materialFolder = gui.addFolder('THREE.Material')
 materialFolder.add(material, 'transparent').onChange(() => material.needsUpdate = true)
 materialFolder.add(material, 'opacity', 0, 1, 0.01)
@@ -113,48 +117,28 @@ materialFolder.add(material, 'visible')
 materialFolder
     .add(material, 'side', options.side)
     .onChange(() => updateMaterial())
-materialFolder.open()
+//materialFolder.open()
 
-const data = {
-    color: material.color.getHex(),
-    emissive: material.emissive.getHex(),
-}
-
-const meshPhysicalMaterialFolder = gui.addFolder('THREE.MeshPhysicalMaterial')
-
-meshPhysicalMaterialFolder.addColor(data, 'color').onChange(() => {
+const meshToonMaterialFolder = gui.addFolder('THREE.MeshToonMaterial')
+meshToonMaterialFolder.addColor(data, 'color').onChange(() => {
     material.color.setHex(Number(data.color.toString().replace('#', '0x')))
 })
-meshPhysicalMaterialFolder.addColor(data, 'emissive').onChange(() => {
-    material.emissive.setHex(
-        Number(data.emissive.toString().replace('#', '0x'))
-    )
-})
 
-meshPhysicalMaterialFolder.add(material, 'wireframe')
-meshPhysicalMaterialFolder
-    .add(material, 'flatShading')
+//shininess, specular and flatShading no longer supported in MeshToonMaterial
+
+meshToonMaterialFolder
+    .add(data, 'gradientMap', options.gradientMap)
     .onChange(() => updateMaterial())
-meshPhysicalMaterialFolder.add(material, 'reflectivity', 0, 1)
-meshPhysicalMaterialFolder.add(material, 'roughness', 0, 1)
-meshPhysicalMaterialFolder.add(material, 'metalness', 0, 1)
-meshPhysicalMaterialFolder.add(material, 'clearcoat', 0, 1, 0.01)
-meshPhysicalMaterialFolder.add(material, 'clearcoatRoughness', 0, 1, 0.01)
-meshPhysicalMaterialFolder.add(material, 'transmission', 0, 1, 0.01)
-meshPhysicalMaterialFolder.add(material, 'ior', 1.0, 2.333)
-meshPhysicalMaterialFolder.add(material, 'thickness', 0, 10.0)
-meshPhysicalMaterialFolder.open()
+meshToonMaterialFolder.open()
 
 function updateMaterial() {
     material.side = Number(material.side) as THREE.Side
+    material.gradientMap = eval(data.gradientMap as string)
     material.needsUpdate = true
 }
 
 function animate() {
     requestAnimationFrame(animate)
-
-    // torusKnot.rotation.x += 0.01
-    // torusKnot.rotation.y += 0.01
 
     render()
 
