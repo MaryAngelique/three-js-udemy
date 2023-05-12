@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
 import Stats from 'three/examples/jsm/libs/stats.module'
 import { DragControls } from 'three/examples/jsm/controls/DragControls'
+import { Reflector } from 'three/examples/jsm/objects/Reflector'
 
 const scene = new THREE.Scene()
 scene.add(new THREE.AxesHelper(5))
@@ -122,6 +123,60 @@ function onWindowResize() {
     renderer.setSize(window.innerWidth, window.innerHeight)
     render()
 }
+
+const mirrorBack1: Reflector = new Reflector(
+    new THREE.PlaneGeometry(2, 2),
+    {
+        color: new THREE.Color(0x7f7f7f),
+        textureWidth: window.innerWidth * window.devicePixelRatio,
+        textureHeight: window.innerHeight * window.devicePixelRatio
+    }
+)
+
+mirrorBack1.position.y = 1
+mirrorBack1.position.z = -1
+scene.add(mirrorBack1)
+
+const mirrorBack2: Reflector = new Reflector(
+    new THREE.PlaneGeometry(2, 2),
+    {
+        color: new THREE.Color(0x7f7f7f),
+        textureWidth: window.innerWidth * window.devicePixelRatio,
+        textureHeight: window.innerHeight * window.devicePixelRatio
+    }
+)
+
+mirrorBack2.position.y = 1
+mirrorBack2.position.z = -2
+scene.add(mirrorBack2)
+
+const mirrorFront1: Reflector = new Reflector(
+    new THREE.PlaneGeometry(2, 2),
+    {
+        color: new THREE.Color(0x7f7f7f),
+        //clipBias: 0.003,
+        textureWidth: window.innerWidth * window.devicePixelRatio,
+        textureHeight: window.innerHeight * window.devicePixelRatio
+    }
+)
+mirrorFront1.position.y = 1
+mirrorFront1.position.z = 1
+mirrorFront1.rotateY(Math.PI)
+scene.add(mirrorFront1)
+
+const mirrorFront2: Reflector = new Reflector(
+    new THREE.PlaneGeometry(2, 2),
+    {
+        color: new THREE.Color(0x7f7f7f),
+        //clipBias: 0.003,
+        textureWidth: window.innerWidth * window.devicePixelRatio,
+        textureHeight: window.innerHeight * window.devicePixelRatio
+    }
+)
+mirrorFront2.position.y = 1
+mirrorFront2.position.z = 2
+mirrorFront2.rotateY(Math.PI)
+scene.add(mirrorFront2)
 
 const stats = new Stats()
 document.body.appendChild(stats.dom)
