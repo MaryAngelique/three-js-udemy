@@ -35,7 +35,7 @@ loader.load(
     function (gltf) {
         gltf.scene.traverse(function (child) {
             if ((child as THREE.Mesh).isMesh) {
-                const m = child as THREE.Mesh
+                let m = child as THREE.Mesh
                 m.receiveShadow = true
                 m.castShadow = true
                 if (child.name === 'Plane') {
@@ -83,8 +83,10 @@ function onDoubleClick(event: MouseEvent) {
     const intersects = raycaster.intersectObjects(sceneMeshes, false)
 
     if (intersects.length > 0) {
-        // const p = intersects[0].point
-        // controls.target.set(p.x, p.y, p.z)
+        const p = intersects[0].point
+
+        //controls.target.set(p.x, p.y, p.z)
+
         // new TWEEN.Tween(controls.target)
         //     .to({
         //         x: p.x,
@@ -95,6 +97,46 @@ function onDoubleClick(event: MouseEvent) {
         //     .easing(TWEEN.Easing.Cubic.Out)
         //     //.onUpdate(() => render())
         //     .start()
+
+        new TWEEN.Tween(monkey.position)
+            .to(
+                {
+                    x: p.x,
+                    // y: p.y + 1,
+                    z: p.z,
+                },
+                500
+            )
+            .start()
+
+        new TWEEN.Tween(monkey.position)
+            .to(
+                {
+                    // x: p.x,
+                    y: p.y + 3,
+                    // z: p.z,
+                },
+                250
+            )
+            //.delay (1000)
+            .easing(TWEEN.Easing.Cubic.Out)
+            //.onUpdate(() => render())
+            .start()
+            .onComplete(() => {
+                new TWEEN.Tween(monkey.position)
+                    .to(
+                        {
+                            // x: p.x,
+                            y: p.y + 1,
+                            // z: p.z,
+                        },
+                        250
+                    )
+                    //.delay (250)
+                    .easing(TWEEN.Easing.Bounce.Out)
+                    //.onUpdate(() => render())
+                    .start()
+            })
     }
 }
 renderer.domElement.addEventListener('dblclick', onDoubleClick, false)
