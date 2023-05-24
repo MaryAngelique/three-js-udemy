@@ -22,6 +22,7 @@
     "webpack-merge": "^5.8.0"
   },
   "dependencies": {
-    "@tweenjs/tween.js": "^20.0.3"
+    "@tweenjs/tween.js": "^20.0.3",
+    "cannon-es": "^0.20.0"
   }
 }
