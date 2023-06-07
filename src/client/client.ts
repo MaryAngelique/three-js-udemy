@@ -2,247 +2,283 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import Stats from 'three/examples/jsm/libs/stats.module'
 import { GUI } from 'dat.gui'
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
-import { Reflector } from 'three/examples/jsm/objects/Reflector'
 import * as CANNON from 'cannon-es'
 import CannonUtils from './utils/cannonUtils'
-import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry'
-import { TWEEN } from 'three/examples/jsm/libs/tween.module.min'
-import {
-    CSS2DRenderer,
-    CSS2DObject,
-} from 'three/examples/jsm/renderers/CSS2DRenderer'
-
-interface Annotation {
-    title: string
-    description: string
-    descriptionDomElement?: HTMLElement
-}
-
-let annotations: { [key: string]: Annotation } = {}
-const annotationMarkers: THREE.Sprite[] = []
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader'
 
 const scene = new THREE.Scene()
-scene.background = new THREE.Color(0xaec6cf)
-
-const world = new CANNON.World()
-world.gravity.set(0, -9.82, 0)
-world.allowSleep = true
-
-var light = new THREE.DirectionalLight()
-light.position.set(2.5, 7.5, 15)
-scene.add(light)
-
+const light1 = new THREE.SpotLight()
+light1.position.set(10, 10, 10)
+light1.angle = Math.PI / 4
+light1.penumbra = 0.15
+light1.castShadow = true
+light1.shadow.mapSize.width = 1024
+light1.shadow.mapSize.height = 1024
+light1.shadow.camera.near = 0.5
+light1.shadow.camera.far = 50
+scene.add(light1)
+const light2 = new THREE.SpotLight()
+light2.position.set(-10, 10, 10)
+light2.angle = Math.PI / 4
+light2.penumbra = 0.15
+light2.castShadow = true
+light2.shadow.mapSize.width = 1024
+light2.shadow.mapSize.height = 1024
+light2.shadow.camera.near = 0.5
+light2.shadow.camera.far = 50
+scene.add(light2)
 const camera = new THREE.PerspectiveCamera(
     75,
     window.innerWidth / window.innerHeight,
     0.1,
     1000
 )
-camera.position.set(1, 1, 1.5)
-
+camera.position.x = 4
+camera.position.y = 6
+camera.position.z = 7
 const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setSize(window.innerWidth, window.innerHeight)
-renderer.sortObjects = false
+renderer.shadowMap.enabled = true
 document.body.appendChild(renderer.domElement)
-
-const labelRenderer = new CSS2DRenderer()
-labelRenderer.setSize(window.innerWidth, window.innerHeight)
-labelRenderer.domElement.style.position = 'absolute'
-labelRenderer.domElement.style.top = '0px'
-labelRenderer.domElement.style.pointerEvents = 'none'
-document.body.appendChild(labelRenderer.domElement)
-
-const circleTexture = new THREE.TextureLoader().load('img/circle.png')
-const envTexture = new THREE.CubeTextureLoader().load([
-    'img/px_25.jpg',
-    'img/nx_25.jpg',
-    'img/py_25.jpg',
-    'img/ny_25.jpg',
-    'img/pz_25.jpg',
-    'img/nz_25.jpg',
-])
-envTexture.mapping = THREE.CubeReflectionMapping
-
-const groundMirror = new Reflector(new THREE.PlaneGeometry(500, 500), {
-    color: new THREE.Color(0x222222),
-    textureWidth: window.innerWidth * window.devicePixelRatio,
-    textureHeight: window.innerHeight * window.devicePixelRatio,
-})
-groundMirror.position.y = -0.005
-groundMirror.rotateX(-Math.PI / 2)
-groundMirror.layers.set(1)
-scene.add(groundMirror)
-
-const planeShape = new CANNON.Plane()
-const planeBody = new CANNON.Body({ mass: 0 })
-planeBody.addShape(planeShape)
-planeBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2)
-world.addBody(planeBody)
-
 const controls = new OrbitControls(camera, renderer.domElement)
-controls.target.set(0, 0.5, 0)
-controls.addEventListener('change', function () {
-    if (camera.position.y < 0.1) {
-        camera.position.y = 0.1
-    }
+controls.screenSpacePanning = true
+controls.target.y = 5
+const world = new CANNON.World()
+world.gravity.set(0, -9.82, 0)
+//world.broadphase = new CANNON.NaiveBroadphase() //
+//world.solver.iterations = 10
+//world.allowSleep = true
+const basicMaterial = new THREE.MeshBasicMaterial({
+    side: THREE.DoubleSide,
 })
-
-const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(2048)
-const cubeCamera = new THREE.CubeCamera(0.1, 100, cubeRenderTarget)
-scene.add(cubeCamera)
-
-const lensMaterial = new THREE.MeshPhysicalMaterial({
-    metalness: 1.0,
-    roughness: 0.2,
-    envMap: cubeRenderTarget.texture,
-    transparent: true,
-    opacity: 0.5,
-    transmission: 0.1,
-    side: THREE.FrontSide,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.39,
+const normalMaterial = new THREE.MeshNormalMaterial({
+    side: THREE.DoubleSide,
+    wireframe: true,
 })
-
-const armMaterial = new THREE.MeshPhysicalMaterial({
-    color: 0x444444,
-    envMap: envTexture,
-    metalness: 1,
-    roughness: 0,
-})
-
-const hingMaterial = new THREE.MeshPhysicalMaterial({
-    color: 0xf0e68c,
-    envMap: envTexture,
-    metalness: 1,
-    roughness: 0,
-})
-
-const frameRefraction = new THREE.MeshPhysicalMaterial({
-    metalness: 1,
-    roughness: 0,
+const phongMaterial = new THREE.MeshPhongMaterial()
+const railMaterial = new THREE.MeshPhysicalMaterial()
+railMaterial.color = new THREE.Color('#ffffff')
+railMaterial.reflectivity = 0
+railMaterial.refractionRatio = 0
+railMaterial.roughness = 0.2
+railMaterial.metalness = 1
+railMaterial.clearcoat = 0.15
+railMaterial.clearcoatRoughness = 0.5
+railMaterial.side = THREE.DoubleSide
+const inverseSphereMaterial = new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
-    envMap: cubeRenderTarget.texture,
-    transparent: true,
+    metalness: 0,
+    roughness: 0.35,
     transmission: 1.0,
-    side: THREE.BackSide,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.35,
+    ior: 1.25,
 })
+inverseSphereMaterial.thickness = 10.0
 
-const frameMaterial = new THREE.MeshPhysicalMaterial({
-    color: 0xb2ffc8,
-    envMap: envTexture,
-    metalness: 1,
-    roughness: 0,
-    transparent: true,
-    opacity: 0.75,
-    side: THREE.FrontSide,
-})
-
-cubeRenderTarget.texture.mapping = THREE.CubeRefractionMapping
-
-let modelReady = false
-let glasses = new THREE.Object3D()
-const glassesBody = new CANNON.Body({ mass: 1 })
-const glTFLoader = new GLTFLoader()
-let annotationCounter = 0
-
-glTFLoader.load(
-    'models/glasses.glb',
-    (gltf) => {
-        gltf.scene.traverse(function (child) {
-            if ((<THREE.Mesh>child).isMesh) {
-                const mesh = (<THREE.Mesh>child).clone()
-                mesh.rotation.x = 0
-                if (mesh.name.endsWith('Lens')) {
-                    mesh.material = lensMaterial
-                    glasses.add(mesh)
-                    glassesBody.addShape(
-                        gemoetryToShape(mesh.geometry as THREE.BufferGeometry)
+const pmremGenerator = new THREE.PMREMGenerator(renderer)
+const envTexture = new THREE.CubeTextureLoader().load(
+    [
+        'img/px_50.png',
+        'img/nx_50.png',
+        'img/py_50.png',
+        'img/ny_50.png',
+        'img/pz_50.png',
+        'img/nz_50.png',
+    ],
+    () => {
+        inverseSphereMaterial.envMap =
+            pmremGenerator.fromCubemap(envTexture).texture
+        pmremGenerator.dispose()
+    }
+)
+const ballMaterial = []
+ballMaterial.push(
+    new THREE.MeshPhysicalMaterial({
+        map: new THREE.TextureLoader().load('img/1-ball.jpg'),
+        roughness: 0.88,
+        metalness: 1.0,
+        clearcoat: 0.3,
+        clearcoatRoughness: 0.15,
+    })
+)
+ballMaterial.push(
+    new THREE.MeshPhysicalMaterial({
+        map: new THREE.TextureLoader().load('img/2-ball.jpg'),
+        roughness: 0.88,
+        metalness: 1.0,
+        clearcoat: 0.3,
+        clearcoatRoughness: 0.15,
+    })
+)
+ballMaterial.push(
+    new THREE.MeshPhysicalMaterial({
+        map: new THREE.TextureLoader().load('img/3-ball.jpg'),
+        roughness: 0.88,
+        metalness: 1.0,
+        clearcoat: 0.3,
+        clearcoatRoughness: 0.15,
+    })
+)
+ballMaterial.push(
+    new THREE.MeshPhysicalMaterial({
+        map: new THREE.TextureLoader().load('img/4-ball.jpg'),
+        roughness: 0.88,
+        metalness: 1.0,
+        clearcoat: 0.3,
+        clearcoatRoughness: 0.15,
+    })
+)
+ballMaterial.push(
+    new THREE.MeshPhysicalMaterial({
+        map: new THREE.TextureLoader().load('img/5-ball.jpg'),
+        roughness: 0.88,
+        metalness: 1.0,
+        clearcoat: 0.3,
+        clearcoatRoughness: 0.15,
+    })
+)
+ballMaterial.push(
+    new THREE.MeshPhysicalMaterial({
+        map: new THREE.TextureLoader().load('img/6-ball.jpg'),
+        roughness: 0.88,
+        metalness: 1.0,
+        clearcoat: 0.3,
+        clearcoatRoughness: 0.15,
+    })
+)
+ballMaterial.push(
+    new THREE.MeshPhysicalMaterial({
+        map: new THREE.TextureLoader().load('img/7-ball.jpg'),
+        roughness: 0.88,
+        metalness: 1.0,
+        clearcoat: 0.3,
+        clearcoatRoughness: 0.15,
+    })
+)
+ballMaterial.push(
+    new THREE.MeshPhysicalMaterial({
+        map: new THREE.TextureLoader().load('img/8-ball.jpg'),
+        roughness: 0.88,
+        metalness: 1.0,
+        clearcoat: 0.3,
+        clearcoatRoughness: 0.15,
+    })
+)
+ballMaterial.push(
+    new THREE.MeshPhysicalMaterial({
+        map: new THREE.TextureLoader().load('img/9-ball.jpg'),
+        roughness: 0.88,
+        metalness: 1.0,
+        clearcoat: 0.3,
+        clearcoatRoughness: 0.15,
+    })
+)
+ballMaterial.push(
+    new THREE.MeshPhysicalMaterial({
+        map: new THREE.TextureLoader().load('img/10-ball.jpg'),
+        roughness: 0.88,
+        metalness: 1.0,
+        clearcoat: 0.3,
+        clearcoatRoughness: 0.15,
+    })
+)
+const positions = [
+    [-2, 3, 0],
+    [0, 3, 0],
+    [2, 3, 0],
+    [0, 3, -2],
+    [0, 3, 2],
+    [-2, 6, 0],
+    [0.5, 8, 0.5],
+    [2, 6, 0],
+    [0, 6, -2],
+    [0, 6, 2],
+]
+const sphereMesh: THREE.Mesh[] = new Array()
+const sphereBody: CANNON.Body[] = new Array()
+for (let i = 0; i < 10; i++) {
+    const sphereGeometry = new THREE.SphereGeometry(1, 16, 16)
+    sphereMesh.push(new THREE.Mesh(sphereGeometry, ballMaterial[i]))
+    sphereMesh[i].position.x = positions[i][0]
+    sphereMesh[i].position.y = positions[i][1]
+    sphereMesh[i].position.z = positions[i][2]
+    sphereMesh[i].castShadow = true
+    sphereMesh[i].receiveShadow = true
+    scene.add(sphereMesh[i])
+    const sphereShape = new CANNON.Sphere(1)
+    sphereBody.push(new CANNON.Body({ mass: 1 }))
+    sphereBody[i].addShape(sphereShape)
+    sphereBody[i].position.x = sphereMesh[i].position.x
+    sphereBody[i].position.y = sphereMesh[i].position.y
+    sphereBody[i].position.z = sphereMesh[i].position.z
+    world.addBody(sphereBody[i])
+}
+let inverseSphere: THREE.Object3D
+let inverseSphereBody: CANNON.Body
+let innerRail: THREE.Object3D
+let innerRailBody: CANNON.Body
+let outerRail: THREE.Object3D
+let modelLoaded = false
+const objLoader = new OBJLoader()
+objLoader.load(
+    'models/inverseSphere4.obj',
+    (object) => {
+        object.traverse(function (child) {
+            if ((child as THREE.Mesh).isMesh) {
+                if (child.name.startsWith('sphere')) {
+                    inverseSphere = child
+                    ;(inverseSphere as THREE.Mesh).material =
+                        inverseSphereMaterial
+                    inverseSphere.position.x = 0
+                    inverseSphere.position.y = 5
+                    var constraintBody = new CANNON.Body({ mass: 0 })
+                    constraintBody.addShape(new CANNON.Sphere(0.01))
+                    constraintBody.position.set(0, 5, 0)
+                    world.addBody(constraintBody)
+                    const shape = CannonUtils.CreateTrimesh(
+                        (inverseSphere as THREE.Mesh).geometry
                     )
-                } else if (mesh.name.endsWith('hinge')) {
-                    mesh.material = hingMaterial
-                    glasses.add(mesh)
-                    glassesBody.addShape(
-                        gemoetryToShape(mesh.geometry as THREE.BufferGeometry)
+                    inverseSphereBody = new CANNON.Body({ mass: 100 })
+                    inverseSphereBody.addShape(shape)
+                    inverseSphereBody.position.x = inverseSphere.position.x
+                    inverseSphereBody.position.y = inverseSphere.position.y
+                    inverseSphereBody.position.z = inverseSphere.position.z
+                    world.addBody(inverseSphereBody)
+                    const c = new CANNON.PointToPointConstraint(
+                        constraintBody,
+                        new CANNON.Vec3(0, 0, 0),
+                        inverseSphereBody,
+                        new CANNON.Vec3(0, 0, 0)
                     )
-                } else if (mesh.name.endsWith('frame')) {
-                    mesh.material = frameRefraction
-                    glasses.add(mesh)
-                    const newMesh = new THREE.Mesh(
-                        mesh.geometry.clone(),
-                        frameMaterial
+                    world.addConstraint(c)
+                } else if (child.name.startsWith('outerRail_')) {
+                    outerRail = child
+                    ;(outerRail as THREE.Mesh).material = railMaterial
+                    outerRail.position.y = 5
+                    const outerRailShape = CannonUtils.CreateTrimesh(
+                        (outerRail as THREE.Mesh).geometry
                     )
-                    newMesh.rotation.copy(mesh.rotation)
-                    glasses.add(newMesh)
-                    const shape = gemoetryToShape(
-                        mesh.geometry as THREE.BufferGeometry
+                    const outerRailBody = new CANNON.Body({ mass: 0 })
+                    outerRailBody.addShape(outerRailShape)
+                    outerRailBody.position.set(0, 5, 0)
+                    world.addBody(outerRailBody)
+                } else if (child.name.startsWith('innerRail_')) {
+                    console.log(child.name)
+                    innerRail = child
+                    ;(innerRail as THREE.Mesh).material = railMaterial
+                    innerRail.position.y = 5
+                    const innerRailShape = CannonUtils.CreateTrimesh(
+                        (innerRail as THREE.Mesh).geometry
                     )
-                    glassesBody.addShape(shape)
-                } else if (mesh.name.endsWith('Arm')) {
-                    mesh.material = armMaterial
-                    glasses.add(mesh)
-                    glassesBody.addShape(
-                        gemoetryToShape(mesh.geometry as THREE.BufferGeometry)
-                    )
-                }
-            } else if (child.isObject3D) {
-                if (child.name.startsWith('Annotation')) {
-                    const aId = (annotationCounter++).toString()
-                    annotations[aId] = {
-                        title: child.userData.title,
-                        description: child.userData.description,
-                    }
-                    const annotationSpriteMaterial = new THREE.SpriteMaterial({
-                        map: circleTexture,
-                        depthTest: false,
-                        depthWrite: false,
-                        sizeAttenuation: false,
-                    })
-                    const annotationSprite = new THREE.Sprite(
-                        annotationSpriteMaterial
-                    )
-                    annotationSprite.scale.set(6.6, 6.6, 6.6)
-                    //changing from blender annotation coords to threejs coords
-                    const tmpY = -child.position.y
-                    child.position.y = child.position.z
-                    child.position.z = tmpY
-                    child.getWorldPosition(annotationSprite.position)
-                    annotationSprite.userData.id = aId
-                    glasses.add(annotationSprite)
-                    annotationSprite.layers.set(1)
-                    annotationMarkers.push(annotationSprite)
-                    const annotationDiv = document.createElement('div')
-                    annotationDiv.className = 'annotationLabel'
-                    annotationDiv.innerHTML = aId
-                    const annotationLabel = new CSS2DObject(annotationDiv)
-                    annotationLabel.position.copy(annotationSprite.position)
-                    glasses.add(annotationLabel)
-                    if (child.userData.title) {
-                        const annotationTextDiv = document.createElement('div')
-                        annotationTextDiv.className = 'annotationDescription'
-                        annotationTextDiv.innerHTML = child.userData.title
-                        if (child.userData.description) {
-                            annotationTextDiv.innerHTML +=
-                                '<p>' + child.userData.description + '</p>'
-                        }
-                        annotationDiv.appendChild(annotationTextDiv)
-                        annotations[aId].descriptionDomElement =
-                            annotationTextDiv
-                    }
+                    inverseSphereBody.addShape(innerRailShape)
                 }
             }
         })
-
-        glasses.scale.set(0.01, 0.01, 0.01)
-        scene.add(glasses)
-
-        glassesBody.position.y = 5
-        glassesBody.quaternion.x = Math.PI / 4
-        glassesBody.quaternion.z = -Math.PI / 7
-        glassesBody.sleepSpeedLimit = 1
-        world.addBody(glassesBody)
-
-        modelReady = true
+        scene.add(inverseSphere)
+        scene.add(outerRail)
+        scene.add(innerRail)
+        modelLoaded = true
     },
     (xhr) => {
         console.log((xhr.loaded / xhr.total) * 100 + '% loaded')
@@ -251,171 +287,103 @@ glTFLoader.load(
         console.log(error)
     }
 )
-
-function gemoetryToShape(geometry: THREE.BufferGeometry) {
-    const position = geometry.attributes.position.array
-    const points: THREE.Vector3[] = []
-    for (let i = 0; i < position.length; i += 3) {
-        points.push(
-            new THREE.Vector3(position[i], position[i + 1], position[i + 2])
-        )
-    }
-    const convexHull = new ConvexGeometry(points)
-    const shape = CannonUtils.CreateTrimesh(convexHull.scale(0.01, 0.01, 0.01))
-    return shape
-}
-
+const planeGeometry = new THREE.PlaneGeometry(25, 25)
+const planeMesh = new THREE.Mesh(planeGeometry, phongMaterial)
+planeMesh.rotateX(-Math.PI / 2)
+planeMesh.receiveShadow = true
+scene.add(planeMesh)
 window.addEventListener('resize', onWindowResize, false)
 function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight
     camera.updateProjectionMatrix()
     renderer.setSize(window.innerWidth, window.innerHeight)
-    labelRenderer.setSize(window.innerWidth, window.innerHeight)
     render()
 }
-
-const raycaster = new THREE.Raycaster()
-raycaster.layers.set(1)
-
-renderer.domElement.addEventListener('pointerdown', onClick, false)
-
-function onClick(event: MouseEvent) {
-    raycaster.setFromCamera(
-        {
-            x: (event.clientX / renderer.domElement.clientWidth) * 2 - 1,
-            y: -(event.clientY / renderer.domElement.clientHeight) * 2 + 1,
-        },
-        camera
-    )
-    const intersects = raycaster.intersectObjects(annotationMarkers, true)
-    if (intersects.length > 0) {
-        if (intersects[0].object.userData && intersects[0].object.userData.id) {
-            const p = intersects[0].point
-            const diffVec3 = p.clone().sub(controls.target)
-            const camTo = camera.position.clone().add(diffVec3)
-            new TWEEN.Tween(controls.target)
-                .to(
-                    {
-                        x: p.x,
-                        y: p.y,
-                        z: p.z,
-                    },
-                    500
-                )
-                .easing(TWEEN.Easing.Cubic.Out)
-                .start()
-            new TWEEN.Tween(camera.position)
-                .to(
-                    {
-                        x: camTo.x,
-                        y: camTo.y,
-                        z: camTo.z,
-                    },
-                    500
-                )
-                .easing(TWEEN.Easing.Cubic.Out)
-                .start()
-            Object.keys(annotations).forEach((annotation) => {
-                if (annotations[annotation].descriptionDomElement) {
-                    ;(
-                        annotations[annotation]
-                            .descriptionDomElement as HTMLDivElement
-                    ).style.display = 'none'
-                }
-            })
-            if (
-                annotations[intersects[0].object.userData.id]
-                    .descriptionDomElement
-            ) {
-                ;(
-                    annotations[intersects[0].object.userData.id]
-                        .descriptionDomElement as HTMLDivElement
-                ).style.display = 'block'
-            }
-        }
-    }
-}
-const gui = new GUI()
-const lensFolder = gui.addFolder('Lenses')
-lensFolder.add(lensMaterial, 'opacity', 0, 1.0, 0.01).name('Opacity')
-lensFolder.add(lensMaterial, 'metalness', 0, 1.0, 0.01).name('Metalness')
-lensFolder.add(lensMaterial, 'roughness', 0, 1.0, 0.01).name('Roughness')
-lensFolder.add(lensMaterial, 'transmission', 0, 1.0, 0.01).name('Transmission')
-lensFolder.add(lensMaterial, 'clearcoat', 0, 1.0, 0.01).name('Clearcoat')
-lensFolder
-    .add(lensMaterial, 'clearcoatRoughness', 0, 1.0, 0.01)
-    .name('ClearcoatRoughness')
-lensFolder.open()
-
-const frameRefractionFolder = gui.addFolder('FrameRefraction')
-frameRefractionFolder
-    .add(frameRefraction, 'opacity', 0, 1.0, 0.01)
-    .name('Opacity')
-frameRefractionFolder
-    .add(frameRefraction, 'metalness', 0, 1.0, 0.01)
-    .name('Metalness')
-frameRefractionFolder
-    .add(frameRefraction, 'roughness', 0, 1.0, 0.01)
-    .name('Roughness')
-frameRefractionFolder
-    .add(frameRefraction, 'transmission', 0, 1.0, 0.01)
-    .name('Transmission')
-frameRefractionFolder.open()
-
-const frameMaterialFolder = gui.addFolder('FrameMaterial')
-frameMaterialFolder.add(frameMaterial, 'opacity', 0, 1.0, 0.01).name('Opacity')
-frameMaterialFolder
-    .add(frameMaterial, 'metalness', 0, 1.0, 0.01)
-    .name('Metalness')
-frameMaterialFolder
-    .add(frameMaterial, 'roughness', 0, 1.0, 0.01)
-    .name('Roughness')
-frameMaterialFolder.open()
-
 const stats = new Stats()
 document.body.appendChild(stats.dom)
-
+const gui = new GUI()
+const physicsFolder = gui.addFolder('Physics')
+physicsFolder.add(world.gravity, 'x', -10.0, 10.0, 0.1)
+physicsFolder.add(world.gravity, 'y', -10.0, 10.0, 0.1)
+physicsFolder.add(world.gravity, 'z', -10.0, 10.0, 0.1)
+const materialFolder = gui.addFolder('THREE.Material')
+materialFolder.add(inverseSphereMaterial, 'transparent').onChange(() => inverseSphereMaterial.needsUpdate = true)
+materialFolder.add(inverseSphereMaterial, 'opacity', 0, 1, 0.01)
+const InverseSphereMaterialFolder = gui.addFolder('InverseSphereMaterial')
+InverseSphereMaterialFolder.add(inverseSphereMaterial, 'roughness', 0, 1, 0.01)
+InverseSphereMaterialFolder.add(inverseSphereMaterial, 'metalness', 0, 1, 0.01)
+InverseSphereMaterialFolder.add(inverseSphereMaterial, 'clearcoat', 0, 1, 0.01)
+InverseSphereMaterialFolder.add(
+    inverseSphereMaterial,
+    'clearcoatRoughness',
+    0,
+    1,
+    0.01
+)
+InverseSphereMaterialFolder.add(
+    inverseSphereMaterial,
+    'transmission',
+    0,
+    1,
+    0.01
+)
+InverseSphereMaterialFolder.add(inverseSphereMaterial, 'ior', 1, 2.4, 0.01)
+InverseSphereMaterialFolder.add(inverseSphereMaterial, 'thickness', 0, 10, 0.01)
+InverseSphereMaterialFolder.open()
+const railMaterialFolder = gui.addFolder('RailMaterial')
+railMaterialFolder.add(railMaterial, 'roughness', 0.0, 1.0, 0.01)
+railMaterialFolder.add(railMaterial, 'metalness', 0, 1, 0.01)
+railMaterialFolder.add(railMaterial, 'clearcoat', 0, 1, 0.01)
+railMaterialFolder.add(railMaterial, 'clearcoatRoughness', 0, 1, 0.01)
 const clock = new THREE.Clock()
-
-function animate() {
+var animate = function () {
     requestAnimationFrame(animate)
-
     controls.update()
-
-    TWEEN.update()
-
     let delta = clock.getDelta()
     if (delta > 0.1) delta = 0.1
     world.step(delta)
-
-    if (modelReady) {
-        glasses.position.set(
-            glassesBody.position.x,
-            glassesBody.position.y,
-            glassesBody.position.z
+    for (let i = 0; i < 10; i++) {
+        sphereMesh[i].position.set(
+            sphereBody[i].position.x,
+            sphereBody[i].position.y,
+            sphereBody[i].position.z
         )
-        glasses.quaternion.set(
-            glassesBody.quaternion.x,
-            glassesBody.quaternion.y,
-            glassesBody.quaternion.z,
-            glassesBody.quaternion.w
+        sphereMesh[i].quaternion.set(
+            sphereBody[i].quaternion.x,
+            sphereBody[i].quaternion.y,
+            sphereBody[i].quaternion.z,
+            sphereBody[i].quaternion.w
         )
     }
-
+    if (modelLoaded) {
+        inverseSphereBody.angularVelocity.set(0, 0, -0.5)
+        inverseSphere.position.set(
+            inverseSphereBody.position.x,
+            inverseSphereBody.position.y,
+            inverseSphereBody.position.z
+        )
+        inverseSphere.quaternion.set(
+            inverseSphereBody.quaternion.x,
+            inverseSphereBody.quaternion.y,
+            inverseSphereBody.quaternion.z,
+            inverseSphereBody.quaternion.w
+        )
+        innerRail.position.set(
+            inverseSphereBody.position.x,
+            inverseSphereBody.position.y,
+            inverseSphereBody.position.z
+        )
+        innerRail.quaternion.set(
+            inverseSphereBody.quaternion.x,
+            inverseSphereBody.quaternion.y,
+            inverseSphereBody.quaternion.z,
+            inverseSphereBody.quaternion.w
+        )
+    }
     render()
-
     stats.update()
 }
-
 function render() {
-    if (modelReady) {
-        cubeCamera.position.copy(camera.position)
-        camera.layers.disable(1)
-        cubeCamera.update(renderer, scene)
-        camera.layers.enable(1)
-    }
     renderer.render(scene, camera)
-    labelRenderer.render(scene, camera)
 }
-
 animate()
