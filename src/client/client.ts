@@ -3,11 +3,26 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import Stats from 'three/examples/jsm/libs/stats.module'
 import { GUI } from 'dat.gui'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
-import { CSM } from 'three/examples/jsm/csm/CSM'
-import { CSMHelper } from 'three/examples/jsm/csm/CSMHelper'
+import { TWEEN } from 'three/examples/jsm/libs/tween.module.min'
 
 const scene = new THREE.Scene()
 scene.background = new THREE.Color(0x87ceeb)
+
+const light = new THREE.DirectionalLight(0xffffff, 2.0)
+light.position.set(100, 100, 100)
+light.castShadow = true
+light.shadow.mapSize.width = 4096
+light.shadow.mapSize.height = 4096
+light.shadow.camera.near = 0.5
+light.shadow.camera.far = 500
+light.shadow.camera.left = -500
+light.shadow.camera.right = 500
+light.shadow.camera.top = 500
+light.shadow.camera.bottom = -500
+scene.add(light)
+
+// const helper = new THREE.CameraHelper(light.shadow.camera);
+// scene.add(helper);
 
 const camera = new THREE.PerspectiveCamera(
     75,
@@ -15,109 +30,138 @@ const camera = new THREE.PerspectiveCamera(
     0.1,
     1000
 )
-camera.position.set(4, 1, 7)
-
-const csm = new CSM({
-    fade: true,
-    far: camera.far,
-    cascades: 4,
-    shadowMapSize: 4096,
-    lightDirection: new THREE.Vector3(-1, -1, 0),
-    camera: camera,
-    parent: scene,
-    lightIntensity: 0.5
-})
-
-console.log(csm)
-
-const csmHelper = new CSMHelper(csm)
-csmHelper.displayFrustum = true
-csmHelper.displayPlanes = true
-csmHelper.displayShadowBounds = true
-scene.add(csmHelper as any)
+camera.position.set(4, 5, 7)
 
 const renderer = new THREE.WebGLRenderer()
 renderer.setSize(window.innerWidth, window.innerHeight)
 renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.PCFSoftShadowMap
 document.body.appendChild(renderer.domElement)
 
 const controls = new OrbitControls(camera, renderer.domElement)
 controls.dampingFactor = 0.05
 controls.enableDamping = true
+controls.screenSpacePanning = false
 
-const trees = ['birchTreeWithLeaves', 'saplingTree', 'tree1WithLeaves']
+const raycaster = new THREE.Raycaster()
+const sceneMeshes = new Array()
+
 const material = new THREE.MeshPhongMaterial({ color: 0x567d46 })
-
-const gLTFLoader = new GLTFLoader()
-trees.forEach((tree) => {
-    gLTFLoader.load(
-        'models/' + tree + '.glb',
-        (gltf) => {
-            let childObjectCount = 0
-            gltf.scene.traverse(function (child) {
-                if ((child as THREE.Mesh).isMesh) {
-                    child.castShadow = true
-                    childObjectCount++
-                }
-            })
-            const instancesCount = 100
-            const positions = []
-            for (let i = 0; i < instancesCount; i++) {
-                positions.push(
-                    new THREE.Vector3(
-                        Math.random() * 200 - 100,
-                        0,
-                        Math.random() * 200 - 100
-                    )
-                )
-            }
-            const scales = []
-            for (let i = 0; i < instancesCount; i++) {
-                scales.push({
-                    x: Math.random() + 2,
-                    y: Math.random() + 2,
-                    z: Math.random() + 2
-                })
-            }
-            const rotations = []
-            for (let i = 0; i < instancesCount; i++) {
-                rotations.push(Math.random() * Math.PI * 2)
-            }
-            for (let i = 0; i < childObjectCount; i++) {
-                const geometry = (
-                    gltf.scene.children[2].children[i] as THREE.Mesh
-                ).geometry
-                const copy = new THREE.InstancedMesh(
-                    geometry,
-                    (gltf.scene.children[2].children[i] as THREE.Mesh).material,
-                    instancesCount
-                )
-                copy.castShadow = true
-                const matrix = new THREE.Matrix4()
-                for (let j = 0; j < instancesCount; j++) {
-                    matrix.makeRotationY(rotations[j])
-                    matrix.makeScale(scales[j].x, scales[j].y, scales[j].z)
-                    matrix.setPosition(positions[j])
-                    copy.setMatrixAt(j, matrix)
-                }
-                scene.add(copy)
-            }
-        },
-        (xhr) => {
-            console.log((xhr.loaded / xhr.total) * 100 + '% loaded')
-        },
-        (error) => {
-            console.log(error)
-        }
-    )
-})
-
-const planeGeometry = new THREE.PlaneGeometry(200, 200)
+const planeGeometry = new THREE.PlaneGeometry(1, 1)
+planeGeometry.scale(500, 500, 1)
 const planeMesh = new THREE.Mesh(planeGeometry, material)
 planeMesh.rotateX(-Math.PI / 2)
 planeMesh.receiveShadow = true
 scene.add(planeMesh)
+sceneMeshes.push(planeMesh)
+
+let childObjectCount = 2 //how many child meshes are in the tree model. The trunk and leaves are different meshes
+const treeCount = 1200 //this many trees are drawn
+let treeCounter = 0
+
+const positions = new Array()
+for (let i = 0; i < treeCount; i++) {
+    positions.push({
+        x: Math.random() * 400 - 200,
+        y: 0,
+        z: Math.random() * 400 - 200,
+    })
+}
+const scales = new Array()
+for (let i = 0; i < treeCount; i++) {
+    scales.push({
+        x: Math.random() * 2 + 1,
+        y: Math.random() * 5 + 1,
+        z: Math.random() * 2 + 1,
+    })
+}
+
+const treesTypes = ['saplingTree', 'birchTreeWithLeaves', 'tree1WithLeaves']
+treesTypes.forEach((treeType) => {
+    let treeHighDetail = new THREE.Object3D()
+    let treeMediumDetail = new THREE.Object3D()
+    let treeLowDetail = new THREE.Object3D()
+
+    const glTFLoader = new GLTFLoader()
+    glTFLoader.load('models/' + treeType + '_high.glb', (gltf) => {
+        for (let j = 0; j < childObjectCount; j++) {
+            const geometry = (gltf.scene.children[0].children[j] as THREE.Mesh)
+                .geometry
+            treeHighDetail.add(
+                new THREE.Mesh(
+                    geometry,
+                    (gltf.scene.children[0].children[j] as THREE.Mesh).material
+                )
+            )
+        }
+        treeHighDetail.traverse(function (child) {
+            if ((<THREE.Mesh>child).isMesh) {
+                child.castShadow = true
+            }
+        })
+
+        glTFLoader.load('models/' + treeType + '_medium.glb', (gltf) => {
+            for (let j = 0; j < childObjectCount; j++) {
+                const geometry = (
+                    gltf.scene.children[0].children[j] as THREE.Mesh
+                ).geometry
+                treeMediumDetail.add(
+                    new THREE.Mesh(
+                        geometry,
+                        (
+                            gltf.scene.children[0].children[j] as THREE.Mesh
+                        ).material
+                    )
+                )
+            }
+            treeMediumDetail.traverse(function (child) {
+                if ((<THREE.Mesh>child).isMesh) {
+                    child.castShadow = true
+                }
+            })
+
+            glTFLoader.load('models/' + treeType + '_low.glb', (gltf) => {
+                for (let j = 0; j < childObjectCount; j++) {
+                    const geometry = (
+                        gltf.scene.children[0].children[j] as THREE.Mesh
+                    ).geometry
+                    treeLowDetail.add(
+                        new THREE.Mesh(
+                            geometry,
+                            (
+                                gltf.scene.children[0].children[j] as THREE.Mesh
+                            ).material
+                        )
+                    )
+                }
+                treeLowDetail.traverse(function (child) {
+                    if ((<THREE.Mesh>child).isMesh) {
+                        child.castShadow = true
+                    }
+                })
+
+                for (let i = 0; i < treeCount / treesTypes.length; i++) {
+                    const lod = new THREE.LOD()
+                    let mesh = treeHighDetail.clone()
+                    mesh.scale.copy(scales[treeCounter])
+                    lod.addLevel(mesh, 5)
+
+                    mesh = treeMediumDetail.clone()
+                    mesh.scale.copy(scales[treeCounter])
+                    lod.addLevel(mesh, 10)
+
+                    mesh = treeLowDetail.clone()
+                    mesh.scale.copy(scales[treeCounter])
+                    lod.addLevel(mesh, 30)
+
+                    lod.position.copy(positions[treeCounter])
+                    scene.add(lod)
+
+                    treeCounter++
+                }
+            })
+        })
+    })
+})
 
 window.addEventListener('resize', onWindowResize, false)
 function onWindowResize() {
@@ -127,40 +171,93 @@ function onWindowResize() {
     render()
 }
 
+renderer.domElement.addEventListener('dblclick', onDoubleClick, false)
+function onDoubleClick(event: MouseEvent) {
+    const mouse = {
+        x: (event.clientX / renderer.domElement.clientWidth) * 2 - 1,
+        y: -(event.clientY / renderer.domElement.clientHeight) * 2 + 1,
+    }
+    raycaster.setFromCamera(mouse, camera)
+
+    const intersects = raycaster.intersectObjects(sceneMeshes, false)
+
+    if (intersects.length > 0) {
+        const p = intersects[0].point
+        new TWEEN.Tween(controls.target)
+            .to(
+                {
+                    x: p.x,
+                    y: p.y,
+                    z: p.z,
+                },
+                500
+            )
+            .easing(TWEEN.Easing.Cubic.Out)
+            .start()
+    }
+}
+
 const stats = new Stats()
 document.body.appendChild(stats.dom)
 
+var data = {
+    color: light.color.getHex(),
+    shadowMapSizeWidth: 4096,
+    shadowMapSizeHeight: 4096,
+    mapsEnabled: true,
+}
 const gui = new GUI()
-const csmFolder = gui.addFolder('CSM')
-csmFolder.add(csm.lightDirection, 'x', -1, 1, 0.01)
-csmFolder.add(csm.lightDirection, 'y', -1, 1, 0.01)
-csmFolder.add(csm.lightDirection, 'z', -1, 1, 0.01)
-csmFolder.add(csm, 'lightNear', 1, 1000, 1).onChange(function (value) {
-    for (let i = 0; i < csm.lights.length; i++) {
-        csm.lights[i].shadow.camera.near = value
-        csm.lights[i].shadow.camera.updateProjectionMatrix()
-    }
+const lightFolder = gui.addFolder('THREE.Light')
+lightFolder.addColor(data, 'color').onChange(() => {
+    light.color.setHex(Number(data.color.toString().replace('#', '0x')))
 })
-csmFolder.add(csm, 'lightFar', 1, 1000, 1).onChange(function (value) {
-    for (let i = 0; i < csm.lights.length; i++) {
-        csm.lights[i].shadow.camera.far = value
-        csm.lights[i].shadow.camera.updateProjectionMatrix()
-    }
-})
-csmFolder.add(csm, 'lightIntensity', 0.1, 2, 0.1).onChange(function (value) {
-    for (let i = 0; i < csm.lights.length; i++) {
-        csm.lights[i].intensity = value
-    }
-})
-csmFolder.open()
+lightFolder.add(light, 'intensity', 0, 2, 0.01)
+lightFolder.open()
+
+const directionalLightFolder = gui.addFolder('THREE.DirectionalLight')
+directionalLightFolder
+    .add(light.shadow.camera, 'left', -500, 1, 1)
+    .onChange(() => light.shadow.camera.updateProjectionMatrix())
+directionalLightFolder
+    .add(light.shadow.camera, 'right', 1, 500, 1)
+    .onChange(() => light.shadow.camera.updateProjectionMatrix())
+directionalLightFolder
+    .add(light.shadow.camera, 'top', 1, 500, 1)
+    .onChange(() => light.shadow.camera.updateProjectionMatrix())
+directionalLightFolder
+    .add(light.shadow.camera, 'bottom', -500, -1, 1)
+    .onChange(() => light.shadow.camera.updateProjectionMatrix())
+directionalLightFolder
+    .add(light.shadow.camera, 'near', 0.1, 500)
+    .onChange(() => light.shadow.camera.updateProjectionMatrix())
+directionalLightFolder
+    .add(light.shadow.camera, 'far', 0.1, 500)
+    .onChange(() => light.shadow.camera.updateProjectionMatrix())
+directionalLightFolder
+    .add(data, 'shadowMapSizeWidth', [256, 512, 1024, 2048, 4096])
+    .onChange(() => updateShadowMapSize())
+directionalLightFolder
+    .add(data, 'shadowMapSizeHeight', [256, 512, 1024, 2048, 4096])
+    .onChange(() => updateShadowMapSize())
+directionalLightFolder.add(light.position, 'x', -50, 50, 0.01)
+directionalLightFolder.add(light.position, 'y', -50, 50, 0.01)
+directionalLightFolder.add(light.position, 'z', -50, 50, 0.01)
+directionalLightFolder.open()
+
+function updateShadowMapSize() {
+    light.shadow.mapSize.width = data.shadowMapSizeWidth
+    light.shadow.mapSize.height = data.shadowMapSizeHeight
+    ;(light.shadow.map as any) = null
+}
 
 function animate() {
     requestAnimationFrame(animate)
 
     controls.update()
 
-    csm.update()
-    csmHelper.update()
+    TWEEN.update()
+
+    //helper.update()
 
     render()
 
