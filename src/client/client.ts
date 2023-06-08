@@ -2,50 +2,10 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import Stats from 'three/examples/jsm/libs/stats.module'
 import { GUI } from 'dat.gui'
-import { Font, FontLoader } from 'three/examples/jsm/loaders/FontLoader'
-import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry'
-import { CSG } from './utils/CSGMesh'
-import { TWEEN } from 'three/examples/jsm/libs/tween.module.min'
-import Bender from './utils/bender'
-
-const bender = new Bender()
-
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer'
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass'
+import { BokehPass } from 'three/examples/jsm/postprocessing/BokehPass'
 const scene = new THREE.Scene()
-
-const light1 = new THREE.SpotLight()
-light1.position.set(6.5, 7.5, 7.5)
-light1.angle = Math.PI / 4
-light1.penumbra = 0.5
-scene.add(light1)
-
-const light2 = new THREE.SpotLight()
-light1.position.set(-6.5, 7.5, 7.5)
-light2.angle = Math.PI / 4
-light2.penumbra = 0.5
-scene.add(light2)
-
-const camera = new THREE.PerspectiveCamera(
-    75,
-    window.innerWidth / window.innerHeight,
-    0.1,
-    1000
-)
-camera.position.x = -2
-camera.position.y = 1
-camera.position.z = -2
-
-const renderer = new THREE.WebGLRenderer()
-renderer.setSize(window.innerWidth, window.innerHeight)
-document.body.appendChild(renderer.domElement)
-
-const controls = new OrbitControls(camera, renderer.domElement)
-controls.enableDamping = true
-controls.target.z = -5
-
-const data = {
-    text: 'abc123',
-}
-
 const envTexture = new THREE.CubeTextureLoader().load([
     'img/px_25.jpg',
     'img/nx_25.jpg',
@@ -54,119 +14,113 @@ const envTexture = new THREE.CubeTextureLoader().load([
     'img/pz_25.jpg',
     'img/nz_25.jpg',
 ])
-envTexture.mapping = THREE.CubeReflectionMapping
-
-const material = new THREE.MeshStandardMaterial({
-    envMap: envTexture,
-    metalness: 1.0,
-    roughness: 0.0,
-    color: 0xffd700,
-})
-
-const cylinderMesh1 = new THREE.Mesh(
-    new THREE.CylinderGeometry(6, 6, 1.5, 64, 1, false),
-    material
+scene.background = envTexture
+const ambientLight = new THREE.AmbientLight(0x444444)
+scene.add(ambientLight)
+const light1 = new THREE.PointLight()
+light1.position.set(-6, 10, -6)
+light1.castShadow = true
+light1.shadow.mapSize.height = 1024
+light1.shadow.mapSize.width = 1024
+scene.add(light1)
+const camera = new THREE.PerspectiveCamera(
+    75,
+    window.innerWidth / window.innerHeight,
+    0.01,
+    100
 )
-const cylinderMesh2 = new THREE.Mesh(
-    new THREE.CylinderGeometry(5, 5, 1.6, 64, 1, false),
-    material
-)
-cylinderMesh1.position.set(0, 0, 0)
-cylinderMesh2.geometry.rotateX(-Math.PI / 2)
-cylinderMesh2.position.set(0, 0, 0)
-cylinderMesh2.geometry.rotateX(-Math.PI / 2)
-
-const cylinderCSG1 = CSG.fromMesh(cylinderMesh1)
-const cylinderCSG2 = CSG.fromMesh(cylinderMesh2)
-
-const ringCSG = cylinderCSG1.subtract(cylinderCSG2)
-const ringMesh = CSG.toMesh(ringCSG, new THREE.Matrix4())
-
-let engravedMesh = new THREE.Mesh(ringMesh.geometry, material)
-scene.add(engravedMesh)
-let font: Font
-
-const loader = new FontLoader()
-loader.load('fonts/helvetiker_regular.typeface.json', function (f) {
-    font = f
-    regenerateGeometry()
+camera.position.set(3, 1.5, 3)
+const renderer = new THREE.WebGLRenderer()
+renderer.setSize(window.innerWidth, window.innerHeight)
+renderer.shadowMap.enabled = true
+document.body.appendChild(renderer.domElement)
+const renderPass = new RenderPass(scene, camera)
+const bokehPass = new BokehPass(scene, camera, {
+    focus: 1.0,
+    aperture: 0.0001,
+    maxblur: 1.0,
+    width: window.innerWidth,
+    height: window.innerHeight,
 })
-
+const composer = new EffectComposer(renderer)
+composer.addPass(renderPass)
+composer.addPass(bokehPass)
+const orbitControls = new OrbitControls(camera, renderer.domElement)
+orbitControls.enableDamping = true
+orbitControls.target.set(1, 0, 0)
+const planeGeometry = new THREE.PlaneGeometry(25, 25)
+const texture = new THREE.TextureLoader().load('img/grid.png')
+const plane = new THREE.Mesh(
+    planeGeometry,
+    new THREE.MeshPhongMaterial({ map: texture })
+)
+plane.rotateX(-Math.PI / 2)
+plane.position.y = -1
+plane.receiveShadow = true
+scene.add(plane)
 window.addEventListener('resize', onWindowResize, false)
 function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight
     camera.updateProjectionMatrix()
     renderer.setSize(window.innerWidth, window.innerHeight)
+    composer.setSize(window.innerWidth, window.innerHeight)
 }
+const pivot = new THREE.Object3D()
+scene.add(pivot)
+const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(2048)
+const cubeCamera = new THREE.CubeCamera(0.1, 100, cubeRenderTarget)
+scene.add(cubeCamera)
+const material = new THREE.MeshPhysicalMaterial({
+    reflectivity: 1.0,
+    transmission: 1.0,
+    roughness: 0,
+    metalness: 0,
+    clearcoat: 0.3,
+    clearcoatRoughness: 0.25,
+    color: new THREE.Color(0xffffff),
+    ior: 1.5,
+})
+material.thickness = 50.0
 
-const raycaster = new THREE.Raycaster()
-
-renderer.domElement.addEventListener('dblclick', onDoubleClick, false)
-function onDoubleClick(event: MouseEvent) {
-    const mouse = {
-        x: (event.clientX / renderer.domElement.clientWidth) * 2 - 1,
-        y: -(event.clientY / renderer.domElement.clientHeight) * 2 + 1,
-    }
-
-    raycaster.setFromCamera(mouse, camera)
-
-    const intersects = raycaster.intersectObject(engravedMesh, false)
-    if (intersects.length > 0) {
-        const p = intersects[0].point
-        new TWEEN.Tween(controls.target)
-            .to(
-                {
-                    x: p.x,
-                    y: p.y,
-                    z: p.z,
-                },
-                200
-            )
-            .easing(TWEEN.Easing.Cubic.Out)
-            .start()
-    }
-}
-
+//cubeRenderTarget.texture.mapping = THREE.CubeRefractionMapping;
+const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), material)
+ball.position.set(1.5, 0, 0)
+ball.castShadow = true
+pivot.add(ball)
+const gui = new GUI()
+const ballFolder = gui.addFolder('Ball1')
+ballFolder.add(ball, 'visible').name('Visible')
+ballFolder.add(material, 'metalness', 0, 1.0, 0.01).name('Metalness')
+ballFolder.add(material, 'roughness', 0, 1.0, 0.01).name('Roughness')
+ballFolder.add(material, 'transmission', 0, 1.0, 0.01).name('Transmission')
+ballFolder.add(material, 'clearcoat', 0, 1.0, 0.01).name('Clearcoat')
+ballFolder
+    .add(material, 'clearcoatRoughness', 0, 1.0, 0.01)
+    .name('ClearcoatRoughness')
+ballFolder.add(material, 'reflectivity', 0, 1.0, 0.01).name('Reflectivity')
+ballFolder.add(material, 'ior', 1.0, 2.333, 0.01).name('IOR')
+ballFolder.add(material, 'thickness', 0, 50.0, 0.1).name('thickness')
+ballFolder.open()
 const stats = new Stats()
 document.body.appendChild(stats.dom)
-
-const gui = new GUI()
-gui.add(data, 'text').onFinishChange(regenerateGeometry)
-gui.open()
-
-function regenerateGeometry() {
-    let newGeometry
-
-    newGeometry = new TextGeometry(data.text, {
-        font: font,
-        size: 1,
-        height: 0.2,
-        curveSegments: 2,
-    })
-
-    newGeometry.center()
-    bender.bend(newGeometry, 'y', Math.PI / 16)
-    newGeometry.translate(0, 0, -5)
-
-    const textCSG = CSG.fromGeometry(newGeometry)
-    const engravedCSG = ringCSG.subtract(textCSG)
-    engravedMesh.geometry.dispose()
-    engravedMesh.geometry = CSG.toMesh(
-        engravedCSG,
-        new THREE.Matrix4()
-    ).geometry
-}
-
-function animate() {
+const clock = new THREE.Clock()
+var animate = function () {
     requestAnimationFrame(animate)
-    controls.update()
-    TWEEN.update()
+    orbitControls.update()
+    const ballWorldPosition = new THREE.Vector3()
+    ball.getWorldPosition(ballWorldPosition)
+    ;(bokehPass.uniforms as any).focus.value =
+        camera.position.distanceTo(ballWorldPosition)
+    const delta = clock.getDelta()
+    ball.rotateY(-0.5 * delta)
+    pivot.rotateY(0.5 * delta)
     render()
     stats.update()
 }
-
 function render() {
-    renderer.render(scene, camera)
+    cubeCamera.position.copy(camera.position)
+    cubeCamera.update(renderer, scene)
+    //renderer.render(scene, camera)
+    composer.render(0.1)
 }
-
 animate()
