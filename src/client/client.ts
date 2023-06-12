@@ -1,26 +1,36 @@
 import * as THREE from 'three'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader'
 import Stats from 'three/examples/jsm/libs/stats.module'
-import { GUI } from 'dat.gui'
 import * as CANNON from 'cannon-es'
 import CannonDebugRenderer from './utils/cannonDebugRenderer'
 
 const scene = new THREE.Scene()
 
-const light = new THREE.DirectionalLight()
-light.position.set(25, 50, 25)
-light.castShadow = true
-light.shadow.mapSize.width = 16384
-light.shadow.mapSize.height = 16384
-light.shadow.camera.near = 0.5
-light.shadow.camera.far = 100
-light.shadow.camera.top = 100
-light.shadow.camera.bottom = -100
-light.shadow.camera.left = -100
-light.shadow.camera.right = 100
-scene.add(light)
+const light1 = new THREE.SpotLight()
+light1.position.set(10, 10, -10)
+light1.angle = Math.PI / 4
+light1.penumbra = 0.5
+light1.castShadow = true
+light1.shadow.mapSize.width = 2048
+light1.shadow.mapSize.height = 2048
+light1.shadow.camera.near = 10
+light1.shadow.camera.far = 30
+light1.shadow.bias = 0.001
+scene.add(light1)
 
-const helper = new THREE.CameraHelper(light.shadow.camera)
-scene.add(helper)
+const light2 = new THREE.SpotLight()
+light2.position.set(-10, 10, -10)
+light2.angle = Math.PI / 4
+light2.penumbra = 0.5
+light2.castShadow = true
+light2.shadow.mapSize.width = 2048
+light2.shadow.mapSize.height = 2048
+light2.shadow.camera.near = 10
+light2.shadow.camera.far = 30
+light2.shadow.bias = 0.001
+scene.add(light2)
 
 const camera = new THREE.PerspectiveCamera(
     75,
@@ -28,129 +38,154 @@ const camera = new THREE.PerspectiveCamera(
     0.1,
     1000
 )
-const chaseCam = new THREE.Object3D()
-chaseCam.position.set(0, 0, 0)
-const chaseCamPivot = new THREE.Object3D()
-chaseCamPivot.position.set(0, 2, 4)
-chaseCam.add(chaseCamPivot)
-scene.add(chaseCam)
+camera.position.set(-2, 6, 4)
 
 const renderer = new THREE.WebGLRenderer()
-renderer.setSize(window.innerWidth, window.innerHeight)
 renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.PCFSoftShadowMap
+//renderer.outputEncoding =  THREE.sRGBEncoding
+renderer.setSize(window.innerWidth, window.innerHeight)
 document.body.appendChild(renderer.domElement)
 
-const phongMaterial = new THREE.MeshPhongMaterial()
+const controls = new OrbitControls(camera, renderer.domElement)
+controls.enableDamping = true
 
 const world = new CANNON.World()
 world.gravity.set(0, -9.82, 0)
 
-const groundMaterial = new CANNON.Material('groundMaterial')
-groundMaterial.friction = 0.25
-groundMaterial.restitution = 0.25
-
-const wheelMaterial = new CANNON.Material('wheelMaterial')
-wheelMaterial.friction = 0.25
-wheelMaterial.restitution = 0.25
-
-//ground
-const groundGeometry: THREE.PlaneGeometry = new THREE.PlaneGeometry(100, 100)
-const groundMesh: THREE.Mesh = new THREE.Mesh(groundGeometry, phongMaterial)
-groundMesh.rotateX(-Math.PI / 2)
-groundMesh.receiveShadow = true
-scene.add(groundMesh)
-const groundShape = new CANNON.Box(new CANNON.Vec3(50, 1, 50))
-const groundBody = new CANNON.Body({ mass: 0, material: groundMaterial })
-groundBody.addShape(groundShape)
-groundBody.position.set(0, -1, 0)
-world.addBody(groundBody)
-
-//jumps
-for (let i = 0; i < 100; i++) {
-    const height = Math.random() * 50 + 0.5
-    const jump = new THREE.Mesh(
-        new THREE.CylinderGeometry(0, 1, height, 5),
-        phongMaterial
-    )
-    jump.position.x = Math.random() * 100 - 50
-    jump.position.y = height / 2
-    jump.position.z = Math.random() * 100 - 50
-    scene.add(jump)
-
-    const cylinderShape = new CANNON.Cylinder(0.01, 1, height, 5)
-    const cylinderBody = new CANNON.Body({ mass: 0 })
-    cylinderBody.addShape(cylinderShape, new CANNON.Vec3())
-    cylinderBody.position.x = jump.position.x
-    cylinderBody.position.y = jump.position.y
-    cylinderBody.position.z = jump.position.z
-    world.addBody(cylinderBody)
-}
-
-const heliBodyGeometry = new THREE.SphereGeometry(0.66)
-const heliBodyMesh = new THREE.Mesh(heliBodyGeometry, phongMaterial)
-heliBodyMesh.position.y = 1
-heliBodyMesh.castShadow = true
-scene.add(heliBodyMesh)
-heliBodyMesh.add(chaseCam)
-const heliTailGeometry = new THREE.BoxGeometry(0.1, 0.1, 2)
-const heliTailMesh = new THREE.Mesh(heliTailGeometry, phongMaterial)
-heliTailMesh.position.z = 1
-heliTailMesh.castShadow = true
-heliBodyMesh.add(heliTailMesh)
-const skidGeometry = new THREE.BoxGeometry(0.1, 0.05, 1.5)
-const skidLeftMesh = new THREE.Mesh(skidGeometry, phongMaterial)
-const skidRightMesh = new THREE.Mesh(skidGeometry, phongMaterial)
-skidLeftMesh.position.set(-0.5, -0.45, 0)
-skidRightMesh.position.set(0.5, -0.45, 0)
-skidLeftMesh.castShadow = true
-skidRightMesh.castShadow = true
-heliBodyMesh.add(skidLeftMesh)
-heliBodyMesh.add(skidRightMesh)
-
-const heliBodyShape = new CANNON.Box(new CANNON.Vec3(0.6, 0.5, 0.6))
-const heliBody = new CANNON.Body({ mass: 0.5 })
-heliBody.addShape(heliBodyShape)
-heliBody.position.x = heliBodyMesh.position.x
-heliBody.position.y = heliBodyMesh.position.y
-heliBody.position.z = heliBodyMesh.position.z
-heliBody.angularDamping = 0.9 //so it doesn't pendulum so much
-world.addBody(heliBody)
-
-//rotor
-const rotorGeometry = new THREE.BoxGeometry(0.1, 0.01, 5)
-const rotorMesh: THREE.Mesh = new THREE.Mesh(rotorGeometry, phongMaterial)
-rotorMesh.position.x = 0
-rotorMesh.position.y = 3
-rotorMesh.position.z = 0
-scene.add(rotorMesh)
-
-const rotorShape = new CANNON.Sphere(0.1)
-const rotorBody = new CANNON.Body({ mass: 1 })
-rotorBody.addShape(rotorShape)
-rotorBody.position.x = rotorMesh.position.x
-rotorBody.position.y = rotorMesh.position.y
-rotorBody.position.z = rotorMesh.position.z
-rotorBody.linearDamping = 0.5 //simulates auto altitude
-world.addBody(rotorBody)
-
-const rotorConstraint = new CANNON.PointToPointConstraint(
-    heliBody,
-    new CANNON.Vec3(0, 1, 0),
-    rotorBody,
-    new CANNON.Vec3()
+const material = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.05,
+    metalness: 0.54,
+    flatShading: true,
+})
+const handMaterial = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.05,
+    metalness: 0.54,
+    flatShading: true,
+    transparent: true,
+    opacity: 0.9,
+})
+const pmremGenerator = new THREE.PMREMGenerator(renderer)
+const envTexture = new THREE.TextureLoader().load(
+    'img/pano-equirectangular.jpg',
+    () => {
+        material.envMap = pmremGenerator.fromEquirectangular(envTexture).texture
+    }
 )
 
-rotorConstraint.collideConnected = false
-world.addConstraint(rotorConstraint)
+let hand: THREE.Group
+let bowl: THREE.Mesh
+let fingerBody: CANNON.Body
 
-const keyMap: { [id: string]: boolean } = {}
-const onDocumentKey = (e: KeyboardEvent) => {
-    keyMap[e.code] = e.type === 'keydown'
+const gltfLoader = new GLTFLoader()
+gltfLoader.load(
+    'models/right-hand-bent.glb',
+    function (gltf) {
+        hand = gltf.scene
+        hand.children[0].position.set(0.95, 4, 0.85)
+        hand.children[0].receiveShadow = true
+        hand.children[0].castShadow = true
+        ;(hand.children[0] as THREE.Mesh).material = handMaterial
+
+        scene.add(gltf.scene)
+
+        fingerBody = new CANNON.Body({ mass: 0 })
+        fingerBody.addShape(new CANNON.Sphere(0.25))
+        fingerBody.addShape(
+            new CANNON.Sphere(0.25),
+            new CANNON.Vec3(0.05, 0.5, 0.1)
+        )
+        fingerBody.addShape(
+            new CANNON.Sphere(0.25),
+            new CANNON.Vec3(0.1, 1.0, 0.2)
+        )
+        fingerBody.position.set(0, 0, 0)
+        world.addBody(fingerBody)
+
+        const objLoader = new OBJLoader()
+        objLoader.load(
+            'models/bowl.obj',
+            function (obj) {
+                bowl = obj.children[0] as THREE.Mesh
+                bowl.receiveShadow = true
+                bowl.material = material
+                scene.add(bowl)
+
+                // using the raycaster to generate a cannon height field based on
+                // the loaded bowl geometry
+                const raycaster = new THREE.Raycaster()
+                const down = new THREE.Vector3(0, -1, 0)
+                const matrix: number[][] = []
+                for (let x = -10; x <= 10; x++) {
+                    matrix.push([])
+                    for (let z = -10; z <= 10; z++) {
+                        raycaster.set(new THREE.Vector3(x, 10, z), down)
+                        const intersects = raycaster.intersectObject(
+                            bowl,
+                            false
+                        )
+                        if (intersects.length > 0) {
+                            matrix[x + 10][z + 10] = intersects[0].point.y
+                        } else {
+                            matrix[x + 10][z + 10] = 0
+                        }
+                    }
+                }
+
+                let bowlBody = new CANNON.Body({ mass: 0 })
+                var bowlShape = new CANNON.Heightfield(matrix)
+                bowlBody.quaternion.setFromAxisAngle(
+                    new CANNON.Vec3(1, 0, 0),
+                    -Math.PI / 2
+                )
+                bowlBody.addShape(bowlShape, new CANNON.Vec3())
+                bowlBody.position.x = -10
+                bowlBody.position.z = 10
+                world.addBody(bowlBody)
+
+                renderer.domElement.addEventListener(
+                    'mousemove',
+                    onMouseMove,
+                    false
+                )
+            },
+            (xhr) => {
+                console.log((xhr.loaded / xhr.total) * 100 + '% loaded')
+            },
+            (error) => {
+                console.log(error)
+            }
+        )
+    },
+    (xhr) => {
+        console.log((xhr.loaded / xhr.total) * 100 + '% loaded')
+    },
+    (error) => {
+        console.log(error)
+    }
+)
+
+const ballCount = 100
+const sphereMesh: THREE.Mesh[] = new Array()
+const sphereBody: CANNON.Body[] = new Array()
+for (let i = 0; i < ballCount; i++) {
+    const sphereGeometry = new THREE.SphereGeometry(0.5, 8, 8)
+    sphereMesh.push(new THREE.Mesh(sphereGeometry, material))
+    sphereMesh[i].position.x = Math.random() * 10 - 5
+    sphereMesh[i].position.y = i / 4 + 4
+    sphereMesh[i].position.z = Math.random() * 10 - 5
+    sphereMesh[i].castShadow = true
+    sphereMesh[i].receiveShadow = true
+    scene.add(sphereMesh[i])
+    const sphereShape = new CANNON.Sphere(0.5)
+    sphereBody.push(new CANNON.Body({ mass: 0.1 }))
+    sphereBody[i].addShape(sphereShape)
+    sphereBody[i].position.x = sphereMesh[i].position.x
+    sphereBody[i].position.y = sphereMesh[i].position.y
+    sphereBody[i].position.z = sphereMesh[i].position.z
+    world.addBody(sphereBody[i])
 }
-
-document.addEventListener('keydown', onDocumentKey, false)
-document.addEventListener('keyup', onDocumentKey, false)
 
 window.addEventListener('resize', onWindowResize, false)
 function onWindowResize() {
@@ -160,133 +195,65 @@ function onWindowResize() {
     render()
 }
 
+const raycaster = new THREE.Raycaster()
+
+let fingerTo = new THREE.Vector3()
+
+function onMouseMove(event: MouseEvent) {
+    const mouse = {
+        x: (event.clientX / renderer.domElement.clientWidth) * 2 - 1,
+        y: -(event.clientY / renderer.domElement.clientHeight) * 2 + 1,
+    }
+
+    raycaster.setFromCamera(mouse, camera)
+
+    const intersects = raycaster.intersectObject(bowl, false)
+
+    if (intersects.length > 0) {
+        fingerTo.copy(intersects[0].point)
+    }
+}
+
 const stats = new Stats()
 document.body.appendChild(stats.dom)
-
-const gui = new GUI()
-const physicsFolder = gui.addFolder('Physics')
-physicsFolder.add(world.gravity, 'x', -10.0, 10.0, 0.1)
-physicsFolder.add(world.gravity, 'y', -10.0, 10.0, 0.1)
-physicsFolder.add(world.gravity, 'z', -10.0, 10.0, 0.1)
-physicsFolder.open()
 
 const clock = new THREE.Clock()
 let delta
 
 const cannonDebugRenderer = new CannonDebugRenderer(scene, world)
 
-const v = new THREE.Vector3()
-let banking = false
-let climbing = false
-let pitching = false
-let yawing = false
-const stableLift = 14.7
-const thrust = new CANNON.Vec3(0, 5, 0)
-
 function animate() {
     requestAnimationFrame(animate)
+    controls.update()
 
-    helper.update()
-
-    delta = Math.min(clock.getDelta(), 0.1)
+    delta = clock.getDelta()
+    if (delta > 0.1) delta = 0.1
     world.step(delta)
 
-    cannonDebugRenderer.update()
-
-    // Copy coordinates from Cannon to Three.js
-    rotorMesh.position.set(
-        rotorBody.position.x,
-        rotorBody.position.y,
-        rotorBody.position.z
-    )
-    rotorMesh.rotateY(thrust.y * delta * 2)
-
-    heliBodyMesh.position.set(
-        heliBody.position.x,
-        heliBody.position.y,
-        heliBody.position.z
-    )
-    heliBodyMesh.quaternion.set(
-        heliBody.quaternion.x,
-        heliBody.quaternion.y,
-        heliBody.quaternion.z,
-        heliBody.quaternion.w
-    )
-
-    climbing = false
-    if (keyMap['KeyW']) {
-        if (thrust.y < 40) {
-            thrust.y += 5 * delta
-            climbing = true
+    if (hand) {
+        hand.position.copy(fingerTo)
+        fingerBody.position.set(
+            hand.position.x,
+            hand.position.y + 0.66,
+            hand.position.z
+        )
+        for (let i = 0; i < ballCount; i++) {
+            sphereMesh[i].position.set(
+                sphereBody[i].position.x,
+                sphereBody[i].position.y,
+                sphereBody[i].position.z
+            )
+            sphereMesh[i].quaternion.set(
+                sphereBody[i].quaternion.x,
+                sphereBody[i].quaternion.y,
+                sphereBody[i].quaternion.z,
+                sphereBody[i].quaternion.w
+            )
         }
     }
-    if (keyMap['KeyS']) {
-        if (thrust.y > 0) {
-            thrust.y -= 5 * delta
-            climbing = true
-        }
-    }
-    yawing = false
-    if (keyMap['KeyA']) {
-        if (rotorBody.angularVelocity.y < 2.0)
-            rotorBody.angularVelocity.y += 5 * delta
-        yawing = true
-    }
-    if (keyMap['KeyD']) {
-        if (rotorBody.angularVelocity.y > -2.0)
-            rotorBody.angularVelocity.y -= 5 * delta
-        yawing = true
-    }
 
-    pitching = false
-    if (keyMap['ArrowUp'] || keyMap['Numpad8']) {
-        if (thrust.z >= -10.0) thrust.z -= 5 * delta
-        pitching = true
-    }
-    if (keyMap['ArrowDown'] || keyMap['Numpad5']) {
-        if (thrust.z <= 10.0) thrust.z += 5 * delta
-        pitching = true
-    }
-    banking = false
-    if (keyMap['ArrowLeft'] || keyMap['Numpad4']) {
-        if (thrust.x >= -10.0) thrust.x -= 5 * delta
-        banking = true
-    }
-    if (keyMap['ArrowRight'] || keyMap['Numpad6']) {
-        if (thrust.x <= 10.0) thrust.x += 5 * delta
-        banking = true
-    }
-
-    //auto stabilise
-    if (!yawing) {
-        if (rotorBody.angularVelocity.y < 0)
-            rotorBody.angularVelocity.y += 1 * delta
-        if (rotorBody.angularVelocity.y > 0)
-            rotorBody.angularVelocity.y -= 1 * delta
-    }
-    heliBody.angularVelocity.y = rotorBody.angularVelocity.y
-
-    if (!pitching) {
-        if (thrust.z < 0) thrust.z += 2.5 * delta
-        if (thrust.z > 0) thrust.z -= 2.5 * delta
-    }
-    if (!banking) {
-        if (thrust.x < 0) thrust.x += 2.5 * delta
-        if (thrust.x > 0) thrust.x -= 2.5 * delta
-    }
-    if (!climbing && heliBodyMesh.position.y > 2) {
-        thrust.y = stableLift
-    }
-
-    rotorBody.applyLocalForce(thrust, new CANNON.Vec3())
-
-    camera.lookAt(heliBodyMesh.position)
-
-    chaseCamPivot.getWorldPosition(v)
-    if (v.y < 1) {
-        v.y = 1
-    }
-    camera.position.lerpVectors(camera.position, v, 0.05)
+    //un-commment next line to see the cannon debug renderer shapes
+    //cannonDebugRenderer.update()
 
     render()
 
