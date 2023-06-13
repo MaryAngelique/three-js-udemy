@@ -1,34 +1,10 @@
 import * as THREE from 'three'
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import Stats from 'three/examples/jsm/libs/stats.module'
-import { GUI } from 'dat.gui'
-import * as CANNON from 'cannon-es'
-import CannonDebugRenderer from './utils/cannonDebugRenderer'
-import { DragControls } from 'three/examples/jsm/controls/DragControls'
 
 const scene = new THREE.Scene()
 
-const light1 = new THREE.SpotLight()
-light1.position.set(2.5, 5, 5)
-light1.angle = Math.PI / 4
-light1.penumbra = 0.5
-light1.castShadow = true
-light1.shadow.mapSize.width = 1024
-light1.shadow.mapSize.height = 1024
-light1.shadow.camera.near = 0.5
-light1.shadow.camera.far = 20
-scene.add(light1)
-
-const light2 = new THREE.SpotLight()
-light2.position.set(-2.5, 5, 5)
-light2.angle = Math.PI / 4
-light2.penumbra = 0.5
-light2.castShadow = true
-light2.shadow.mapSize.width = 1024
-light2.shadow.mapSize.height = 1024
-light2.shadow.camera.near = 0.5
-light2.shadow.camera.far = 20
-scene.add(light2)
+const gridHelper = new THREE.GridHelper(10, 10, 0xaec6cf, 0xaec6cf)
+scene.add(gridHelper)
 
 const camera = new THREE.PerspectiveCamera(
     75,
@@ -36,91 +12,20 @@ const camera = new THREE.PerspectiveCamera(
     0.1,
     1000
 )
-camera.position.y = 10
-camera.position.z = 3
 
 const renderer = new THREE.WebGLRenderer()
 renderer.setSize(window.innerWidth, window.innerHeight)
-renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.PCFSoftShadowMap
 document.body.appendChild(renderer.domElement)
 
-const controls = new OrbitControls(camera, renderer.domElement)
-controls.screenSpacePanning = true
-controls.target.y = 1
-
-const world = new CANNON.World()
-world.gravity.set(0, -9.82, 0)
-
-const normalMaterial = new THREE.MeshNormalMaterial()
-const phongMaterial = new THREE.MeshPhongMaterial()
-
-const planeGeometry = new THREE.PlaneGeometry(25, 25)
-const planeMesh = new THREE.Mesh(planeGeometry, phongMaterial)
-planeMesh.rotateX(-Math.PI / 2)
-planeMesh.receiveShadow = true
-scene.add(planeMesh)
-const planeShape = new CANNON.Plane()
-const planeBody = new CANNON.Body({ mass: 0 })
-planeBody.addShape(planeShape)
-planeBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2)
-world.addBody(planeBody)
-
-const sphereMeshes: THREE.Object3D[] = []
-const sphereBodies: CANNON.Body[] = []
-
-const sphereGeometry = new THREE.SphereGeometry()
-const sphereMesh = new THREE.Mesh(sphereGeometry, normalMaterial)
-let i = 0
-for (let x = -5; x <= 6; x += 2.5) {
-    for (let z = -5; z <= 6; z += 2.5) {
-        const sphereMeshClone = sphereMesh.clone()
-        sphereMeshClone.position.x = x
-        sphereMeshClone.position.y = 3
-        sphereMeshClone.position.z = z
-        sphereMeshClone.castShadow = true
-        sphereMeshClone.userData.i = i
-        scene.add(sphereMeshClone)
-        sphereMeshes.push(sphereMeshClone)
-
-        const sphereBody = new CANNON.Body({ mass: 1 })
-        sphereBody.addShape(new CANNON.Sphere(1))
-        sphereBody.position.x = sphereMeshClone.position.x
-        sphereBody.position.y = sphereMeshClone.position.y
-        sphereBody.position.z = sphereMeshClone.position.z
-        world.addBody(sphereBody)
-        sphereBodies.push(sphereBody)
-
-        const localPivotSphere = new CANNON.Vec3(0, 0, 1)
-        const localPivotPlane = new CANNON.Vec3(x, z, 0)
-        const constraint = new CANNON.PointToPointConstraint(
-            sphereBody,
-            localPivotSphere,
-            planeBody,
-            localPivotPlane
-        )
-        world.addConstraint(constraint)
-
-        i++
-    }
-}
-
-let draggingId = -1
-const dragControls = new DragControls(sphereMeshes, camera, renderer.domElement)
-dragControls.addEventListener('dragstart', function (event: THREE.Event) {
-    draggingId = event.object.userData.i
-    console.log(draggingId)
-    event.object.material.opacity = 0.33
-    controls.enabled = false
+const geometry = new THREE.BoxGeometry()
+const material = new THREE.MeshBasicMaterial({
+    color: 0x00ff00,
+    wireframe: true,
 })
-dragControls.addEventListener('dragend', function (event: THREE.Event) {
-    draggingId = -1
-    event.object.material.opacity = 1
-    controls.enabled = true
-})
-dragControls.addEventListener('drag', function (event) {
-    event.object.position.y = 1
-})
+
+const cube = new THREE.Mesh(geometry, material)
+cube.position.set(0, 0.5, -10)
+scene.add(cube)
 
 window.addEventListener('resize', onWindowResize, false)
 function onWindowResize() {
@@ -130,58 +35,115 @@ function onWindowResize() {
     render()
 }
 
+/* Liner Interpolation
+ * lerp(min, max, ratio)
+ * eg,
+ * lerp(20, 60, .5)) = 40
+ * lerp(-20, 60, .5)) = 20
+ * lerp(20, 60, .75)) = 50
+ * lerp(-20, -10, .1)) = -.19
+ */
+function lerp(x: number, y: number, a: number): number {
+    return (1 - a) * x + a * y
+}
+
+// Used to fit the lerps to start and end at specific scrolling percentages
+function scalePercent(start: number, end: number) {
+    return (scrollPercent - start) / (end - start)
+}
+
+const animationScripts: { start: number; end: number; func: () => void }[] = []
+
+//add an animation that flashes the cube through 100 percent of scroll
+animationScripts.push({
+    start: 0,
+    end: 101,
+    func: () => {
+        let g = material.color.g
+        g -= 0.05
+        if (g <= 0) {
+            g = 1.0
+        }
+        material.color.g = g
+    },
+})
+
+//add an animation that moves the cube through first 40 percent of scroll
+animationScripts.push({
+    start: 0,
+    end: 40,
+    func: () => {
+        camera.lookAt(cube.position)
+        camera.position.set(0, 1, 2)
+        cube.position.z = lerp(-10, 0, scalePercent(0, 40))
+        //console.log(cube.position.z)
+    },
+})
+
+//add an animation that rotates the cube between 40-60 percent of scroll
+animationScripts.push({
+    start: 40,
+    end: 60,
+    func: () => {
+        camera.lookAt(cube.position)
+        camera.position.set(0, 1, 2)
+        cube.rotation.z = lerp(0, Math.PI, scalePercent(40, 60))
+        //console.log(cube.rotation.z)
+    },
+})
+
+//add an animation that moves the camera between 60-80 percent of scroll
+animationScripts.push({
+    start: 60,
+    end: 80,
+    func: () => {
+        camera.position.x = lerp(0, 5, scalePercent(60, 80))
+        camera.position.y = lerp(1, 5, scalePercent(60, 80))
+        camera.lookAt(cube.position)
+        //console.log(camera.position.x + " " + camera.position.y)
+    },
+})
+
+//add an animation that auto rotates the cube from 80 percent of scroll
+animationScripts.push({
+    start: 80,
+    end: 101,
+    func: () => {
+        //auto rotate
+        cube.rotation.x += 0.01
+        cube.rotation.y += 0.01
+    },
+})
+
+function playScrollAnimations() {
+    animationScripts.forEach((a) => {
+        if (scrollPercent >= a.start && scrollPercent < a.end) {
+            a.func()
+        }
+    })
+}
+
+let scrollPercent = 0
+
+document.body.onscroll = () => {
+    //calculate the current scroll progress as a percentage
+    scrollPercent =
+        ((document.documentElement.scrollTop || document.body.scrollTop) /
+            ((document.documentElement.scrollHeight ||
+                document.body.scrollHeight) -
+                document.documentElement.clientHeight)) *
+        100
+    ;(document.getElementById('scrollProgress') as HTMLDivElement).innerText =
+        'Scroll Progress : ' + scrollPercent.toFixed(2)
+}
+
 const stats = new Stats()
 document.body.appendChild(stats.dom)
-
-const gui = new GUI()
-const physicsFolder = gui.addFolder('Physics')
-physicsFolder.add(world.gravity, 'x', -10.0, 10.0, 0.1)
-physicsFolder.add(world.gravity, 'y', -10.0, 10.0, 0.1)
-physicsFolder.add(world.gravity, 'z', -10.0, 10.0, 0.1)
-physicsFolder.open()
-
-const clock = new THREE.Clock()
-let delta
-
-const cannonDebugRenderer = new CannonDebugRenderer(scene, world)
 
 function animate() {
     requestAnimationFrame(animate)
 
-    controls.update()
-
-    delta = Math.min(clock.getDelta(), 0.1)
-    world.step(delta)
-
-    cannonDebugRenderer.update()
-
-    // Copy coordinates from Cannon to Three.js
-
-    sphereMeshes.forEach((m, i) => {
-        if (i === draggingId) {
-            sphereBodies[i].position.x = m.position.x
-            sphereBodies[i].position.y = m.position.y
-            sphereBodies[i].position.z = m.position.z
-            sphereBodies[i].quaternion.x = m.quaternion.x
-            sphereBodies[i].quaternion.y = m.quaternion.y
-            sphereBodies[i].quaternion.z = m.quaternion.z
-            sphereBodies[i].quaternion.w = m.quaternion.w
-            sphereBodies[i].velocity.set(0, 0, 0)
-            sphereBodies[i].angularVelocity.set(0, 0, 0)
-        } else {
-            m.position.set(
-                sphereBodies[i].position.x,
-                sphereBodies[i].position.y,
-                sphereBodies[i].position.z
-            )
-            m.quaternion.set(
-                sphereBodies[i].quaternion.x,
-                sphereBodies[i].quaternion.y,
-                sphereBodies[i].quaternion.z,
-                sphereBodies[i].quaternion.w
-            )
-        }
-    })
+    playScrollAnimations()
 
     render()
 
@@ -192,4 +154,5 @@ function render() {
     renderer.render(scene, camera)
 }
 
+window.scrollTo({ top: 0, behavior: 'smooth' })
 animate()
