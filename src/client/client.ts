@@ -1,26 +1,46 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader'
 import Stats from 'three/examples/jsm/libs/stats.module'
-import { GUI } from 'dat.gui'
+import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry'
+import * as CANNON from 'cannon-es'
+import CannonUtils from './utils/cannonUtils'
 
 const scene = new THREE.Scene()
-scene.add(new THREE.AxesHelper(5))
+
+const light1 = new THREE.SpotLight()
+light1.position.set(2.5, 5, 5)
+light1.angle = Math.PI / 4
+light1.penumbra = 0.5
+light1.castShadow = true
+light1.shadow.mapSize.width = 2048
+light1.shadow.mapSize.height = 2048
+light1.shadow.camera.near = 0.5
+light1.shadow.camera.far = 20
+scene.add(light1)
+
+const light = new THREE.SpotLight()
+light.position.set(-2.5, 5, 5)
+light.angle = Math.PI / 4
+light.penumbra = 0.5
+light.castShadow = true
+light.shadow.mapSize.width = 2048
+light.shadow.mapSize.height = 2048
+light.shadow.camera.near = 0.5
+light.shadow.camera.far = 20
+scene.add(light)
 
 const camera = new THREE.PerspectiveCamera(
-    75,
+    85,
     window.innerWidth / window.innerHeight,
     0.1,
     1000
 )
-camera.position.set(-0.6, 0.45, 2)
+camera.position.set(-0.9, 0.5, 2)
 
-const renderer = new THREE.WebGLRenderer()
-//renderer.physicallyCorrectLights = true //deprecated
-renderer.useLegacyLights = false //use this instead of setting physicallyCorrectLights=true property
-renderer.shadowMap.enabled = true
-// renderer.outputEncoding = THREE.sRGBEncoding
+const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setSize(window.innerWidth, window.innerHeight)
+renderer.shadowMap.enabled = true
 document.body.appendChild(renderer.domElement)
 
 const controls = new OrbitControls(camera, renderer.domElement)
@@ -37,47 +57,45 @@ material.envMapIntensity = 25
 
 const texture = new THREE.TextureLoader().load('img/grid.png')
 material.map = texture
-const pmremGenerator = new THREE.PMREMGenerator(renderer)
 const envTexture = new THREE.CubeTextureLoader().load(
     [
-        'img/px_50.png',
-        'img/nx_50.png',
-        'img/py_50.png',
-        'img/ny_50.png',
-        'img/pz_50.png',
-        'img/nz_50.png',
+        'img/px_25.jpg',
+        'img/nx_25.jpg',
+        'img/py_25.jpg',
+        'img/ny_25.jpg',
+        'img/pz_25.jpg',
+        'img/nz_25.jpg',
     ],
     () => {
-        material.envMap = pmremGenerator.fromCubemap(envTexture).texture
-        pmremGenerator.dispose()
+        material.envMap = envTexture
     }
 )
 
-let monkeyMesh: THREE.Mesh
+const world = new CANNON.World()
+world.gravity.set(0, -9.82, 0)
+world.allowSleep = true
 
-const loader = new GLTFLoader()
-loader.load(
-    'models/monkey.glb',
-    function (gltf) {
-        gltf.scene.traverse(function (child) {
-            if ((child as THREE.Mesh).isMesh) {
-                const m = child as THREE.Mesh
-                if (m.name === 'Suzanne') {
-                    m.material = material
-                    monkeyMesh = m
-                }
-                m.receiveShadow = true
-                m.castShadow = true
-            }
-            if ((child as THREE.Light).isLight) {
-                const l = child as THREE.Light
-                l.castShadow = true
-                l.shadow.bias = -0.001
-                l.shadow.mapSize.width = 2048
-                l.shadow.mapSize.height = 2048
-            }
-        })
-        scene.add(gltf.scene)
+let monkey: THREE.Mesh
+let convexHull: THREE.Mesh
+let body: CANNON.Body
+let sphereMesh: THREE.Mesh
+let sphereBody: CANNON.Body
+
+const objLoader = new OBJLoader()
+objLoader.load(
+    'models/monkey.obj',
+    (object) => {
+        monkey = object.children[0] as THREE.Mesh
+        monkey.material = material
+        monkey.position.y = 1.5
+        monkey.rotation.x = 0.4
+        monkey.rotation.z = -0.4
+        monkey.castShadow = true
+        scene.add(monkey)
+
+        setTimeout(() => {
+            createConvexHull()
+        }, 2000)
     },
     (xhr) => {
         console.log((xhr.loaded / xhr.total) * 100 + '% loaded')
@@ -87,6 +105,85 @@ loader.load(
     }
 )
 
+function createConvexHull() {
+    const position = monkey.geometry.attributes.position.array
+    const points: THREE.Vector3[] = []
+    for (let i = 0; i < position.length; i += 3) {
+        points.push(
+            new THREE.Vector3(position[i], position[i + 1], position[i + 2])
+        )
+    }
+    const convexGeometry = new ConvexGeometry(points)
+    convexHull = new THREE.Mesh(
+        convexGeometry,
+        new THREE.MeshBasicMaterial({
+            color: 0x00ff00,
+            wireframe: true,
+        })
+    )
+    monkey.add(convexHull)
+
+    setTimeout(() => {
+        addFloor()
+    }, 2000)
+}
+
+function addFloor() {
+    const planeGeometry = new THREE.PlaneGeometry(25, 25)
+    const texture = new THREE.TextureLoader().load('img/grid.png')
+    const plane: THREE.Mesh = new THREE.Mesh(
+        planeGeometry,
+        new THREE.MeshPhongMaterial({ map: texture })
+    )
+    plane.rotateX(-Math.PI / 2)
+    plane.position.y = -1
+    plane.receiveShadow = true
+    scene.add(plane)
+
+    const planeShape = new CANNON.Plane()
+    const planeBody = new CANNON.Body({ mass: 0 })
+    planeBody.addShape(planeShape)
+    planeBody.quaternion.setFromAxisAngle(
+        new CANNON.Vec3(1, 0, 0),
+        -Math.PI / 2
+    )
+    planeBody.position.y = plane.position.y
+    world.addBody(planeBody)
+
+    const sphereGeometry = new THREE.SphereGeometry(0.5)
+    sphereMesh = new THREE.Mesh(sphereGeometry, material)
+    sphereMesh.position.x = -0.2
+    sphereMesh.position.z = -0.5
+    sphereMesh.castShadow = true
+    scene.add(sphereMesh)
+    const sphereShape = new CANNON.Sphere(0.5)
+    sphereBody = new CANNON.Body({ mass: 1 })
+    sphereBody.addShape(sphereShape)
+    sphereBody.position.x = sphereMesh.position.x
+    sphereBody.position.y = sphereMesh.position.y
+    sphereBody.position.z = sphereMesh.position.z
+    world.addBody(sphereBody)
+
+    setTimeout(() => {
+        convertConvexHullToTrimesh()
+    }, 2000)
+}
+
+function convertConvexHullToTrimesh() {
+    const shape = CannonUtils.CreateTrimesh(convexHull.geometry)
+    body = new CANNON.Body({ mass: 1 })
+    body.allowSleep = true
+    body.addShape(shape)
+    body.position.x = monkey.position.x
+    body.position.y = monkey.position.y
+    body.position.z = monkey.position.z
+    body.quaternion.x = monkey.quaternion.x
+    body.quaternion.y = monkey.quaternion.y
+    body.quaternion.z = monkey.quaternion.z
+    body.quaternion.w = monkey.quaternion.w
+    world.addBody(body)
+}
+
 window.addEventListener('resize', onWindowResize, false)
 function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight
@@ -95,72 +192,45 @@ function onWindowResize() {
     render()
 }
 
-const options = {
-    side: {
-        FrontSide: THREE.FrontSide,
-        BackSide: THREE.BackSide,
-        DoubleSide: THREE.DoubleSide,
-    },
-}
-const gui = new GUI()
-const materialFolder = gui.addFolder('THREE.Material')
-materialFolder.add(material, 'transparent')
-materialFolder.add(material, 'opacity', 0, 1, 0.01)
-materialFolder.add(material, 'depthTest')
-materialFolder.add(material, 'depthWrite')
-materialFolder
-    .add(material, 'alphaTest', 0, 1, 0.01)
-    .onChange(() => updateMaterial())
-materialFolder.add(material, 'visible')
-materialFolder
-    .add(material, 'side', options.side)
-    .onChange(() => updateMaterial())
-//materialFolder.open()
-
-const data = {
-    color: material.color.getHex(),
-    emissive: material.emissive.getHex(),
-}
-
-const meshPhysicalMaterialFolder = gui.addFolder('THREE.MeshPhysicalMaterial')
-
-meshPhysicalMaterialFolder.addColor(data, 'color').onChange(() => {
-    material.color.setHex(Number(data.color.toString().replace('#', '0x')))
-})
-meshPhysicalMaterialFolder.addColor(data, 'emissive').onChange(() => {
-    material.emissive.setHex(
-        Number(data.emissive.toString().replace('#', '0x'))
-    )
-})
-
-meshPhysicalMaterialFolder.add(material, 'wireframe')
-meshPhysicalMaterialFolder
-    .add(material, 'flatShading')
-    .onChange(() => updateMaterial())
-meshPhysicalMaterialFolder.add(material, 'roughness', 0, 1)
-meshPhysicalMaterialFolder.add(material, 'metalness', 0, 1)
-meshPhysicalMaterialFolder.add(material, 'clearcoat', 0, 1, 0.01)
-meshPhysicalMaterialFolder.add(material, 'clearcoatRoughness', 0, 1, 0.01)
-meshPhysicalMaterialFolder.add(material, 'transmission', 0, 1, 0.01)
-meshPhysicalMaterialFolder.add(material, 'ior', 1.0, 2.333)
-meshPhysicalMaterialFolder.add(material, 'thickness', 0, 10.0)
-meshPhysicalMaterialFolder.open()
-
-function updateMaterial() {
-    material.side = Number(material.side) as THREE.Side
-    material.needsUpdate = true
-}
-
 const stats = new Stats()
 document.body.appendChild(stats.dom)
+
+const clock = new THREE.Clock()
+let delta
 
 function animate() {
     requestAnimationFrame(animate)
 
     controls.update()
+    if (monkey) {
+        controls.target.copy(monkey.position)
+    }
 
-    monkeyMesh.rotation.y += 0.01
+    delta = Math.min(clock.getDelta(), 0.1)
+    world.step(delta)
 
+    if (body) {
+        monkey.position.set(body.position.x, body.position.y, body.position.z)
+        monkey.quaternion.set(
+            body.quaternion.x,
+            body.quaternion.y,
+            body.quaternion.z,
+            body.quaternion.w
+        )
+    }
+    if (sphereBody) {
+        sphereMesh.position.set(
+            sphereBody.position.x,
+            sphereBody.position.y,
+            sphereBody.position.z
+        )
+        sphereMesh.quaternion.set(
+            sphereBody.quaternion.x,
+            sphereBody.quaternion.y,
+            sphereBody.quaternion.z,
+            sphereBody.quaternion.w
+        )
+    }
     render()
 
     stats.update()
