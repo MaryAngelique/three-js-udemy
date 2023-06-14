@@ -7,38 +7,17 @@ import { GUI } from 'dat.gui'
 const scene = new THREE.Scene()
 scene.add(new THREE.AxesHelper(5))
 
-const light1 = new THREE.SpotLight()
-light1.position.set(2.5, 5, 5)
-light1.angle = Math.PI / 4
-light1.penumbra = 0.5
-light1.castShadow = true
-light1.shadow.mapSize.width = 1024
-light1.shadow.mapSize.height = 1024
-light1.shadow.camera.near = 0.5
-light1.shadow.camera.far = 20
-scene.add(light1)
-
-const light2 = new THREE.SpotLight()
-light2.position.set(-2.5, 5, 5)
-light2.angle = Math.PI / 4
-light2.penumbra = 0.5
-light2.castShadow = true
-light2.shadow.mapSize.width = 1024
-light2.shadow.mapSize.height = 1024
-light2.shadow.camera.near = 0.5
-light2.shadow.camera.far = 20
-scene.add(light2)
-
 const camera = new THREE.PerspectiveCamera(
     75,
     window.innerWidth / window.innerHeight,
     0.1,
     1000
 )
-camera.position.y = 1.5
-camera.position.z = 2.5
+camera.position.set(-0.6, 0.45, 2)
 
 const renderer = new THREE.WebGLRenderer()
+//renderer.physicallyCorrectLights = true //deprecated
+renderer.useLegacyLights = false //use this instead of setting physicallyCorrectLights=true property
 renderer.shadowMap.enabled = true
 // renderer.outputEncoding = THREE.sRGBEncoding
 renderer.setSize(window.innerWidth, window.innerHeight)
@@ -46,80 +25,59 @@ document.body.appendChild(renderer.domElement)
 
 const controls = new OrbitControls(camera, renderer.domElement)
 controls.enableDamping = true
-controls.target.y = 1
 
-const animationClips: { [key: string]: THREE.AnimationClip } = {}
+const material = new THREE.MeshPhysicalMaterial({})
+material.thickness = 3.0
+material.roughness = 0.9
+material.clearcoat = 0.1
+material.clearcoatRoughness = 0
+material.transmission = 0.99
+material.ior = 1.25
+material.envMapIntensity = 25
 
-let xbotMixer: THREE.AnimationMixer
-let ybotMixer: THREE.AnimationMixer
-let xbotLastAction: THREE.AnimationClip
-let ybotLastAction: THREE.AnimationClip
-
-const totalBots = 2
-let botsLoaded = 0
-let botsReady = false
-
-const gltfLoader = new GLTFLoader()
-gltfLoader.load(
-    'models/xbot.glb',
-    (gltf) => {
-        xbotMixer = new THREE.AnimationMixer(gltf.scene)
-
-        animationClips['xbotDefault'] = gltf.animations[0]
-        xbotLastAction = animationClips['xbotDefault']
-        xbotFolder.add(xbotButtons, 'default')
-
-        gltf.scene.traverse(function (child) {
-            if ((child as THREE.Mesh).isMesh) {
-                const m = child as THREE.Mesh
-                m.castShadow = true
-            }
-        })
-        gltf.scene.position.x = -1
-
-        const helper = new THREE.SkeletonHelper(gltf.scene)
-        scene.add(helper)
-
-        scene.add(gltf.scene)
-
-        botsLoaded++
-
-        loadAnimations()
-    },
-    (xhr) => {
-        console.log((xhr.loaded / xhr.total) * 100 + '% loaded')
-    },
-    (error) => {
-        console.log(error)
+const texture = new THREE.TextureLoader().load('img/grid.png')
+material.map = texture
+const pmremGenerator = new THREE.PMREMGenerator(renderer)
+const envTexture = new THREE.CubeTextureLoader().load(
+    [
+        'img/px_50.png',
+        'img/nx_50.png',
+        'img/py_50.png',
+        'img/ny_50.png',
+        'img/pz_50.png',
+        'img/nz_50.png',
+    ],
+    () => {
+        material.envMap = pmremGenerator.fromCubemap(envTexture).texture
+        pmremGenerator.dispose()
     }
 )
 
-gltfLoader.load(
-    'models/ybot.glb',
+let monkeyMesh: THREE.Mesh
+
+const loader = new GLTFLoader()
+loader.load(
+    'models/monkey.glb',
     function (gltf) {
-        ybotMixer = new THREE.AnimationMixer(gltf.scene)
-
-        animationClips['ybotDefault'] = gltf.animations[0]
-        ybotLastAction = animationClips['ybotDefault']
-        ybotFolder.add(ybotButtons, 'default')
-
         gltf.scene.traverse(function (child) {
-            console.log(child.name + ' ' + child.type)
             if ((child as THREE.Mesh).isMesh) {
                 const m = child as THREE.Mesh
+                if (m.name === 'Suzanne') {
+                    m.material = material
+                    monkeyMesh = m
+                }
+                m.receiveShadow = true
                 m.castShadow = true
             }
+            if ((child as THREE.Light).isLight) {
+                const l = child as THREE.Light
+                l.castShadow = true
+                l.shadow.bias = -0.001
+                l.shadow.mapSize.width = 2048
+                l.shadow.mapSize.height = 2048
+            }
         })
-        gltf.scene.position.x = 1
-
-        const helper = new THREE.SkeletonHelper(gltf.scene)
-        scene.add(helper)
-
         scene.add(gltf.scene)
-
-        botsLoaded++
-
-        loadAnimations()
     },
     (xhr) => {
         console.log((xhr.loaded / xhr.total) * 100 + '% loaded')
@@ -128,117 +86,6 @@ gltfLoader.load(
         console.log(error)
     }
 )
-
-function loadAnimations() {
-    if (botsLoaded === totalBots) {
-        //add an animation from another file
-        gltfLoader.load(
-            'models/actionClip@samba.glb',
-            (gltf) => {
-                console.log('loaded samba')
-                animationClips['samba'] = gltf.animations[0]
-
-                xbotFolder.add(xbotButtons, 'samba')
-                ybotFolder.add(ybotButtons, 'samba')
-
-                //add an animation from another file
-                gltfLoader.load(
-                    'models/actionClip@bellydance.glb',
-                    (gltf) => {
-                        console.log('loaded bellyDance')
-
-                        animationClips['bellyDance'] = gltf.animations[0]
-
-                        xbotFolder.add(xbotButtons, 'bellyDance')
-                        ybotFolder.add(ybotButtons, 'bellyDance')
-
-                        //add an animation from another file
-                        gltfLoader.load(
-                            'models/actionClip@goofyrunning.glb',
-                            (gltf) => {
-                                console.log('loaded goofyRunning')
-                                ;(gltf as any).animations[0].tracks.shift() //delete the specific track that moves the object forward while running
-                                animationClips['goofyRunning'] =
-                                    gltf.animations[0]
-
-                                xbotFolder.add(xbotButtons, 'goofyRunning')
-                                ybotFolder.add(ybotButtons, 'goofyRunning')
-
-                                //clone goofyrunning and create an animation clip using just one of the arms
-
-                                animationClips['clonedRightArm'] =
-                                    animationClips['goofyRunning'].clone()
-                                let i =
-                                    animationClips['clonedRightArm'].tracks
-                                        .length
-                                while (i--) {
-                                    let trackName =
-                                        animationClips['clonedRightArm'].tracks[
-                                            i
-                                        ].name
-                                    if (
-                                        !(
-                                            trackName.startsWith(
-                                                'mixamorigRightShoulder'
-                                            ) ||
-                                            trackName.startsWith(
-                                                'mixamorigRightArm'
-                                            ) ||
-                                            trackName.startsWith(
-                                                'mixamorigRightForeArm'
-                                            ) ||
-                                            trackName.startsWith(
-                                                'mixamorigRightHand'
-                                            )
-                                        )
-                                    ) {
-                                        animationClips[
-                                            'clonedRightArm'
-                                        ].tracks.splice(i, 1)
-                                    }
-                                }
-                                xbotFolder.add(xbotButtons, 'clonedRightArm')
-                                ybotFolder.add(ybotButtons, 'clonedRightArm')
-
-                                console.log(animationClips['clonedRightArm'])
-
-                                botsReady = true
-                            },
-                            (xhr) => {
-                                console.log(
-                                    (xhr.loaded / xhr.total) * 100 + '% loaded'
-                                )
-                            },
-                            (error) => {
-                                console.log(error)
-                            }
-                        )
-                    },
-                    (xhr) => {
-                        console.log((xhr.loaded / xhr.total) * 100 + '% loaded')
-                    },
-                    (error) => {
-                        console.log(error)
-                    }
-                )
-            },
-            (xhr) => {
-                console.log((xhr.loaded / xhr.total) * 100 + '% loaded')
-            },
-            (error) => {
-                console.log(error)
-            }
-        )
-    }
-}
-
-const phongMaterial = new THREE.MeshPhongMaterial()
-
-const planeGeometry = new THREE.PlaneGeometry(25, 25)
-const planeMesh = new THREE.Mesh(planeGeometry, phongMaterial)
-planeMesh.rotateX(-Math.PI / 2)
-planeMesh.receiveShadow = true
-scene.add(planeMesh)
 
 window.addEventListener('resize', onWindowResize, false)
 function onWindowResize() {
@@ -248,116 +95,71 @@ function onWindowResize() {
     render()
 }
 
-const xbotButtons = {
-    default: function () {
-        xbotMixer.clipAction(xbotLastAction).fadeOut(0.5)
-        xbotMixer
-            .clipAction(animationClips['xbotDefault'])
-            .reset()
-            .fadeIn(0.5)
-            .play()
-        xbotLastAction = animationClips['xbotDefault']
-    },
-    samba: function () {
-        xbotMixer.clipAction(xbotLastAction).fadeOut(0.5)
-        xbotMixer.clipAction(animationClips['samba']).reset().fadeIn(0.5).play()
-        xbotLastAction = animationClips['samba']
-    },
-    bellyDance: function () {
-        xbotMixer.clipAction(xbotLastAction).fadeOut(0.5)
-        xbotMixer
-            .clipAction(animationClips['bellyDance'])
-            .reset()
-            .fadeIn(0.5)
-            .play()
-        xbotLastAction = animationClips['bellyDance']
-    },
-    goofyRunning: function () {
-        xbotMixer.clipAction(xbotLastAction).fadeOut(0.5)
-        xbotMixer
-            .clipAction(animationClips['goofyRunning'])
-            .reset()
-            .fadeIn(0.5)
-            .play()
-        xbotLastAction = animationClips['goofyRunning']
-    },
-    clonedRightArm: function () {
-        xbotMixer.clipAction(xbotLastAction).fadeOut(0.5)
-        xbotMixer
-            .clipAction(animationClips['clonedRightArm'])
-            .reset()
-            .fadeIn(0.5)
-            .play()
-        xbotLastAction = animationClips['clonedRightArm']
+const options = {
+    side: {
+        FrontSide: THREE.FrontSide,
+        BackSide: THREE.BackSide,
+        DoubleSide: THREE.DoubleSide,
     },
 }
-
-const ybotButtons = {
-    default: function () {
-        ybotMixer.clipAction(ybotLastAction).fadeOut(0.5)
-        ybotMixer
-            .clipAction(animationClips['ybotDefault'])
-            .reset()
-            .fadeIn(0.5)
-            .play()
-        ybotLastAction = animationClips['ybotDefault']
-    },
-    samba: function () {
-        ybotMixer.clipAction(ybotLastAction).fadeOut(0.5)
-        ybotMixer.clipAction(animationClips['samba']).reset().fadeIn(0.5).play()
-        ybotLastAction = animationClips['samba']
-    },
-    bellyDance: function () {
-        ybotMixer.clipAction(ybotLastAction).fadeOut(0.5)
-        ybotMixer
-            .clipAction(animationClips['bellyDance'])
-            .reset()
-            .fadeIn(0.5)
-            .play()
-        ybotLastAction = animationClips['bellyDance']
-    },
-    goofyRunning: function () {
-        ybotMixer.clipAction(ybotLastAction).fadeOut(0.5)
-        ybotMixer
-            .clipAction(animationClips['goofyRunning'])
-            .reset()
-            .fadeIn(0.5)
-            .play()
-        ybotLastAction = animationClips['goofyRunning']
-    },
-    clonedRightArm: function () {
-        ybotMixer.clipAction(ybotLastAction).fadeOut(0.5)
-        ybotMixer
-            .clipAction(animationClips['clonedRightArm'])
-            .reset()
-            .fadeIn(0.5)
-            .play()
-        ybotLastAction = animationClips['clonedRightArm']
-    },
-}
-
 const gui = new GUI()
-const xbotFolder = gui.addFolder('xbot')
-xbotFolder.open()
-const ybotFolder = gui.addFolder('ybot')
-ybotFolder.open()
+const materialFolder = gui.addFolder('THREE.Material')
+materialFolder.add(material, 'transparent')
+materialFolder.add(material, 'opacity', 0, 1, 0.01)
+materialFolder.add(material, 'depthTest')
+materialFolder.add(material, 'depthWrite')
+materialFolder
+    .add(material, 'alphaTest', 0, 1, 0.01)
+    .onChange(() => updateMaterial())
+materialFolder.add(material, 'visible')
+materialFolder
+    .add(material, 'side', options.side)
+    .onChange(() => updateMaterial())
+//materialFolder.open()
+
+const data = {
+    color: material.color.getHex(),
+    emissive: material.emissive.getHex(),
+}
+
+const meshPhysicalMaterialFolder = gui.addFolder('THREE.MeshPhysicalMaterial')
+
+meshPhysicalMaterialFolder.addColor(data, 'color').onChange(() => {
+    material.color.setHex(Number(data.color.toString().replace('#', '0x')))
+})
+meshPhysicalMaterialFolder.addColor(data, 'emissive').onChange(() => {
+    material.emissive.setHex(
+        Number(data.emissive.toString().replace('#', '0x'))
+    )
+})
+
+meshPhysicalMaterialFolder.add(material, 'wireframe')
+meshPhysicalMaterialFolder
+    .add(material, 'flatShading')
+    .onChange(() => updateMaterial())
+meshPhysicalMaterialFolder.add(material, 'roughness', 0, 1)
+meshPhysicalMaterialFolder.add(material, 'metalness', 0, 1)
+meshPhysicalMaterialFolder.add(material, 'clearcoat', 0, 1, 0.01)
+meshPhysicalMaterialFolder.add(material, 'clearcoatRoughness', 0, 1, 0.01)
+meshPhysicalMaterialFolder.add(material, 'transmission', 0, 1, 0.01)
+meshPhysicalMaterialFolder.add(material, 'ior', 1.0, 2.333)
+meshPhysicalMaterialFolder.add(material, 'thickness', 0, 10.0)
+meshPhysicalMaterialFolder.open()
+
+function updateMaterial() {
+    material.side = Number(material.side) as THREE.Side
+    material.needsUpdate = true
+}
 
 const stats = new Stats()
 document.body.appendChild(stats.dom)
-
-const clock = new THREE.Clock()
-let delta = 0
 
 function animate() {
     requestAnimationFrame(animate)
 
     controls.update()
 
-    delta = clock.getDelta()
-    if (botsReady) {
-        xbotMixer.update(delta)
-        ybotMixer.update(delta)
-    }
+    monkeyMesh.rotation.y += 0.01
 
     render()
 
