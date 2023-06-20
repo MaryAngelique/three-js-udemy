@@ -1,203 +1,180 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import Stats from 'three/examples/jsm/libs/stats.module'
-
-function lerp(x: number, y: number, a: number): number {
-    const r = (1 - a) * x + a * y
-    return r < 0.001 ? 0 : r
-}
-
-class pickable extends THREE.Mesh {
-    hovered = false
-    clicked = false
-    originalColor: THREE.Color
-    colorTo = new THREE.Color(0xff2244)
-
-    constructor(geometry: THREE.BufferGeometry, material: THREE.Material) {
-        super()
-        this.geometry = geometry
-        this.material = material
-        this.originalColor = (
-            material as THREE.MeshPhysicalMaterial
-        ).color.clone()
-        this.castShadow = true
-    }
-
-    update(delta: number): void {
-        this.rotation.x += delta
-        this.rotation.y += delta
-        const m = this.material as THREE.MeshPhysicalMaterial
-        this.hovered
-            ? (m.color.lerp(this.colorTo, 0.1),
-              (m.thickness = lerp(m.thickness, 3, 0.1)),
-              (m.reflectivity = lerp(m.reflectivity, 1, 0.1)),
-              (m.roughness = lerp(m.roughness, 0.1, 0.1)),
-              (m.clearcoat = lerp(m.clearcoat, 0.1, 0.1)),
-              (m.transmission = lerp(m.transmission, 0.99, 0.1)),
-              (m.ior = lerp(m.ior, 1.1, 0.1)))
-            : (m.color.lerp(this.originalColor, 0.1),
-              (m.thickness = lerp(m.thickness, 0, 0.1)),
-              (m.reflectivity = lerp(m.reflectivity, 0, 0.1)),
-              (m.roughness = lerp(m.roughness, 1.0, 0.1)),
-              (m.clearcoat = lerp(m.clearcoat, 0, 0.1)),
-              (m.transmission = lerp(m.transmission, 0, 0.1)),
-              (m.ior = lerp(m.ior, 1.5, 0.1)))
-        this.clicked
-            ? this.scale.set(
-                  lerp(this.scale.x, 1.5, 0.1),
-                  lerp(this.scale.y, 1.5, 0.1),
-                  lerp(this.scale.z, 1.5, 0.1)
-              )
-            : this.scale.set(
-                  lerp(this.scale.x, 1.0, 0.1),
-                  lerp(this.scale.y, 1.0, 0.1),
-                  lerp(this.scale.z, 1.0, 0.1)
-              )
-    }
-}
-
-const raycaster = new THREE.Raycaster()
-const pickables: pickable[] = []
-let intersects: THREE.Intersection[]
+import { GUI } from 'dat.gui'
 
 const scene = new THREE.Scene()
-
-const spotLight = new THREE.SpotLight()
-spotLight.position.set(5, 5, 5)
-spotLight.angle = 0.3
-spotLight.penumbra = 0.5
-spotLight.castShadow = true
-spotLight.shadow.mapSize.width = 512
-spotLight.shadow.mapSize.height = 512
-spotLight.shadow.bias = -0.001
-spotLight.shadow.radius = 20
-spotLight.shadow.blurSamples = 10
-spotLight.shadow.camera.far = 15
-scene.add(spotLight)
 
 const camera = new THREE.PerspectiveCamera(
     75,
     window.innerWidth / window.innerHeight,
     0.1,
-    100
+    1000
 )
-camera.position.y = 2
-camera.position.z = 4
+camera.position.set(0, 0.75, 0.25)
 
-const renderer = new THREE.WebGLRenderer({ antialias: true })
-renderer.outputEncoding = THREE.sRGBEncoding
+const light = new THREE.DirectionalLight()
+light.position.set(1, 1, 1)
+scene.add(light)
+
+const renderer = new THREE.WebGLRenderer()
 renderer.setSize(window.innerWidth, window.innerHeight)
-renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.VSMShadowMap
-renderer.domElement.addEventListener('pointerdown', onClick, false)
-
 document.body.appendChild(renderer.domElement)
-document.addEventListener('mousemove', onDocumentMouseMove, false)
 
 const controls = new OrbitControls(camera, renderer.domElement)
+controls.enablePan = false
 controls.enableDamping = true
 
-const envTexture = new THREE.CubeTextureLoader().load([
-    'img/px_25.jpg',
-    'img/nx_25.jpg',
-    'img/py_25.jpg',
-    'img/ny_25.jpg',
-    'img/pz_25.jpg',
-    'img/nz_25.jpg',
-])
-envTexture.mapping = THREE.CubeReflectionMapping
-scene.environment = envTexture
+const canvasD = document.getElementById('canvasD') as HTMLCanvasElement
+const contextD = canvasD.getContext('2d') as CanvasRenderingContext2D
+const canvasN = document.getElementById('canvasN') as HTMLCanvasElement
+const contextN = canvasN.getContext('2d') as CanvasRenderingContext2D
+contextN.fillStyle = '#7f7fff'
+contextN.fillRect(0, 0, 128, 128)
 
-const cube = new pickable(
-    new THREE.BoxGeometry(),
-    new THREE.MeshPhysicalMaterial({ color: 0xff8800 })
-)
-cube.position.set(-2, 0, 0)
-scene.add(cube)
-pickables.push(cube)
+const displacementMap = new THREE.CanvasTexture(canvasD)
+const normalMap = new THREE.CanvasTexture(canvasN)
 
-const cylinder = new pickable(
-    new THREE.CylinderGeometry(0.66, 0.66),
-    new THREE.MeshPhysicalMaterial({ color: 0x008800 })
-)
-scene.add(cylinder)
-pickables.push(cylinder)
+const geometry = new THREE.PlaneGeometry(1, 1, 128, 128)
+const material = new THREE.MeshStandardMaterial({
+    displacementMap: displacementMap,
+    displacementScale: 0.1,
+    normalMap: normalMap,
+})
 
-const pyramid = new pickable(
-    new THREE.TetrahedronGeometry(),
-    new THREE.MeshPhysicalMaterial({ color: 0x0088ff })
-)
-pyramid.position.set(2, 0, 0)
-scene.add(pyramid)
-pickables.push(pyramid)
+const plane = new THREE.Mesh(geometry, material)
+plane.rotation.x = -Math.PI / 2
+scene.add(plane)
 
-const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(10, 10),
-    new THREE.MeshPhysicalMaterial()
-)
-floor.rotateX(-Math.PI / 2)
-floor.position.y = -1.25
-floor.receiveShadow = true
-scene.add(floor)
+const raycaster = new THREE.Raycaster()
+let intersects: THREE.Intersection[]
+const mouse = new THREE.Vector2()
+let ctrlDown = false
+let ptrDown = false
 
-function onDocumentMouseMove(event: MouseEvent) {
-    raycaster.setFromCamera(
-        {
-            x: (event.clientX / renderer.domElement.clientWidth) * 2 - 1,
-            y: -(event.clientY / renderer.domElement.clientHeight) * 2 + 1,
-        },
-        camera
-    )
-    pickables.forEach((p) => (p.hovered = false))
-    intersects = raycaster.intersectObjects(pickables, false)
-    if (intersects) (intersects[0].object as pickable).hovered = true
+// height2normal - based on www.mrdoob.com/lab/javascript/height2normal/
+function height2normal(
+    context: CanvasRenderingContext2D,
+    contextN: CanvasRenderingContext2D
+) {
+    var width = 128
+    var height = 128
+
+    var src = context.getImageData(0, 0, width, height)
+    var dst = contextN.createImageData(width, height)
+
+    for (var i = 0, l = width * height * 4; i < l; i += 4) {
+        var x1, x2, y1, y2
+
+        if (i % (width * 4) == 0) {
+            // left edge
+            x1 = src.data[i]
+            x2 = src.data[i + 4]
+        } else if (i % (width * 4) == (width - 1) * 4) {
+            // right edge
+            x1 = src.data[i - 4]
+            x2 = src.data[i]
+        } else {
+            x1 = src.data[i - 4]
+            x2 = src.data[i + 4]
+        }
+
+        if (i < width * 4) {
+            // top edge
+            y1 = src.data[i]
+            y2 = src.data[i + width * 4]
+        } else if (i > width * (height - 1) * 4) {
+            // bottom edge
+            y1 = src.data[i - width * 4]
+            y2 = src.data[i]
+        } else {
+            y1 = src.data[i - width * 4]
+            y2 = src.data[i + width * 4]
+        }
+
+        dst.data[i] = x1 - x2 + 127
+        dst.data[i + 1] = y1 - y2 + 127
+        dst.data[i + 2] = 255
+        dst.data[i + 3] = 255
+    }
+
+    contextN.putImageData(dst, 0, 0)
 }
 
-function onClick(event: MouseEvent) {
-    raycaster.setFromCamera(
-        {
-            x: (event.clientX / renderer.domElement.clientWidth) * 2 - 1,
-            y: -(event.clientY / renderer.domElement.clientHeight) * 2 + 1,
-        },
-        camera
-    )
-    intersects = raycaster.intersectObjects(pickables, false)
-    intersects.forEach((i) => {
-        ;(i.object as pickable).clicked = !(i.object as pickable).clicked
-    })
+function draw(uv: THREE.Vector2) {
+    contextD.fillStyle = '#FFFFFF'
+    contextD.fillRect(uv.x * 128, 128 - uv.y * 128, 2, 2)
+    material.needsUpdate = true
+    ;(material.displacementMap as THREE.Texture).needsUpdate = true
+    height2normal(contextD, contextN)
+    ;(material.normalMap as THREE.Texture).needsUpdate = true
 }
 
-const stats = new Stats()
-document.body.appendChild(stats.dom)
-
-const clock = new THREE.Clock()
-let delta = 0
-
-function render() {
-    renderer.render(scene, camera)
+function raycast() {
+    raycaster.setFromCamera(mouse, camera)
+    intersects = raycaster.intersectObject(plane, false)
+    if (intersects.length > 0) {
+        draw(intersects[0].uv as THREE.Vector2)
+    }
 }
 
-function animate() {
-    requestAnimationFrame(animate)
+document.addEventListener('mousemove', function (event) {
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1
+    if (ctrlDown && ptrDown) raycast()
+})
 
-    controls.update()
+renderer.domElement.addEventListener('pointerdown', function () {
+    ptrDown = true
+    if (ctrlDown) raycast()
+})
 
-    delta = clock.getDelta()
-    pickables.forEach((p) => {
-        p.update(delta)
-    })
+renderer.domElement.addEventListener('pointerup', function () {
+    ptrDown = false
+})
 
-    render()
+window.addEventListener('keydown', function (event) {
+    if (event.key === 'Control') {
+        renderer.domElement.style.cursor = 'crosshair'
+        controls.enabled = false
+        ctrlDown = true
+    }
+})
 
-    stats.update()
-}
+window.addEventListener('keyup', function (event) {
+    if (event.key === 'Control') {
+        renderer.domElement.style.cursor = 'pointer'
+        controls.enabled = true
+        ctrlDown = false
+    }
+})
 
+window.addEventListener('resize', onWindowResize, false)
 function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight
     camera.updateProjectionMatrix()
     renderer.setSize(window.innerWidth, window.innerHeight)
     render()
 }
-window.addEventListener('resize', onWindowResize, false)
+
+const stats = new Stats()
+document.body.appendChild(stats.dom)
+
+const gui = new GUI()
+gui.add(material, 'displacementScale', 0, 0.2, 0.01)
+
+function animate() {
+    requestAnimationFrame(animate)
+
+    controls.update()
+
+    render()
+
+    stats.update()
+}
+
+function render() {
+    renderer.render(scene, camera)
+}
 
 animate()
