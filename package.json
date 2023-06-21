@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@tweenjs/tween.js": "^20.0.3",
-    "cannon-es": "^0.20.0"
+    "cannon-es": "^0.20.0",
+    "statsvr": "^3.1.4"
   }
 }

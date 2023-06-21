@@ -35,16 +35,19 @@ function onWindowResize() {
 
 const statsVR = new StatsVR(scene, camera)
 //change default statsvr position
-statsVR.setX(0)
-statsVR.setY(0)
-statsVR.setZ(-2)
+statsVR.setX(0);
+statsVR.setY(0);
+statsVR.setZ(-2);
 
 function render() {
+
+    statsVR.startTimer()
 
     statsVR.update()
 
     renderer.render(scene, camera)
 
+    statsVR.endTimer()
 }
 
 renderer.setAnimationLoop(render)
