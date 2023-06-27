@@ -185,7 +185,7 @@ controllerGrip1.addEventListener('selectstart', () => {
         controllerGrip1.children[0].translateY(-0.15)
     }, 100)
 })
-
+ 
 const statsVR = new StatsVR(scene, camera)
 statsVR.setX(0)
 statsVR.setY(0)
