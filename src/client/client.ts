@@ -8,6 +8,7 @@ const bullets: THREE.Mesh[] = []
 let bulletCounter = 0
 const maxBullets = 10
 const collidableMeshList: THREE.Mesh[] = []
+const elevationsMeshList: THREE.Mesh[] = []
 
 const scene: THREE.Scene = new THREE.Scene()
 
@@ -46,6 +47,7 @@ floor.rotation.x = Math.PI / -2
 floor.position.y = -0.001
 scene.add(floor)
 collidableMeshList.push(floor)
+elevationsMeshList.push(floor)
 
 const cube1 = new THREE.Mesh(
     new THREE.BoxGeometry(1, 2, 1),
@@ -59,6 +61,7 @@ cube1.position.y = 1
 cube1.position.z = -10
 scene.add(cube1)
 collidableMeshList.push(cube1)
+elevationsMeshList.push(cube1)
 
 const cube2 = new THREE.Mesh(
     new THREE.CylinderGeometry(1, 2, 4, 8),
@@ -72,6 +75,7 @@ cube2.position.y = 2
 cube2.position.z = -10
 scene.add(cube2)
 collidableMeshList.push(cube2)
+elevationsMeshList.push(cube2)
 
 const cube3 = new THREE.Mesh(
     new THREE.BoxGeometry(1, 4, 1),
@@ -85,6 +89,7 @@ cube3.position.y = 2
 cube3.position.z = 10
 scene.add(cube3)
 collidableMeshList.push(cube3)
+elevationsMeshList.push(cube3)
 
 for (let i = 0; i < maxBullets; i++) {
     const b = new THREE.Mesh(
@@ -95,7 +100,6 @@ for (let i = 0; i < maxBullets; i++) {
         })
     )
     b.rotation.z = Math.PI / -2
-    b.userData.type = 2 //2 = bullet
     b.userData.lifeTime = 0
     bullets.push(b)
     collidableMeshList.push(b)
@@ -168,7 +172,7 @@ controllerGrip1.addEventListener('selectstart', () => {
         teleportVR.gamePads[1].hapticActuators &&
         teleportVR.gamePads[1].hapticActuators.length > 0
     ) {
-        ;(teleportVR.gamePads[0].hapticActuators[1] as any).pulse(1.0, 5)
+        ;(teleportVR.gamePads[1].hapticActuators[1] as any).pulse(1.0, 5)
     }
     bullets[bulletCounter].visible = false
     controllerGrip1.getWorldPosition(bullets[bulletCounter].position)
@@ -185,7 +189,7 @@ controllerGrip1.addEventListener('selectstart', () => {
         controllerGrip1.children[0].translateY(-0.15)
     }, 100)
 })
- 
+
 const statsVR = new StatsVR(scene, camera)
 statsVR.setX(0)
 statsVR.setY(0)
@@ -196,7 +200,7 @@ const clock: THREE.Clock = new THREE.Clock()
 function render() {
     statsVR.update()
 
-    teleportVR.update()
+    teleportVR.update(elevationsMeshList)
 
     const delta = clock.getDelta()
 
