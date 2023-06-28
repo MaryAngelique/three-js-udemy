@@ -256,7 +256,7 @@ function render() {
     })
     for (let i = 0; i < explosions.length; i++) {
         explosions[i].update()
-    } 
+    }
 
     renderer.render(scene, camera)
 }
