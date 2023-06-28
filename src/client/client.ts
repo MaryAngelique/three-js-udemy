@@ -172,7 +172,7 @@ controllerGrip1.addEventListener('selectstart', () => {
         teleportVR.gamePads[1].hapticActuators &&
         teleportVR.gamePads[1].hapticActuators.length > 0
     ) {
-        ;(teleportVR.gamePads[1].hapticActuators[1] as any).pulse(1.0, 5)
+        ;(teleportVR.gamePads[0].hapticActuators[1] as any).pulse(1.0, 5)
     }
     bullets[bulletCounter].visible = false
     controllerGrip1.getWorldPosition(bullets[bulletCounter].position)
@@ -190,6 +190,66 @@ controllerGrip1.addEventListener('selectstart', () => {
     }, 100)
 })
 
+//custom TeleportVR target object
+var uniforms = {
+    time: { type: 'f', value: 1.0 },
+    tExplosion: {
+        type: 't',
+        value: new THREE.TextureLoader().load('img/blackBluePurple.png'),
+    },
+}
+var targetMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 32, 32),
+    new THREE.ShaderMaterial({
+        uniforms: uniforms,
+        vertexShader: (document.getElementById('vertexShader') as HTMLElement)
+            .textContent as string,
+        fragmentShader: (document.getElementById('fragmentShader') as HTMLElement)
+            .textContent as string,
+        transparent: true,
+    })
+)
+targetMesh.geometry.scale(1, 0.2, 1)
+teleportVR.target.add(targetMesh)
+teleportVR.useDefaultTargetHelper(false)
+
+//custom TeleportVR Direction object
+var targetDirectionIndicatorL = new THREE.Mesh(
+    new THREE.BoxGeometry(0.2, 0.01, 0.5),
+    new THREE.MeshBasicMaterial({
+        color: 0x0000ff,
+        wireframe: true,
+    })
+)
+targetDirectionIndicatorL.translateZ(-1.5)
+targetDirectionIndicatorL.translateX(-0.11)
+targetDirectionIndicatorL.rotateY(Math.PI / -4)
+teleportVR.target.add(targetDirectionIndicatorL)
+
+var targetDirectionIndicatorR = new THREE.Mesh(
+    new THREE.BoxGeometry(0.2, 0.01, 0.5),
+    new THREE.MeshBasicMaterial({
+        color: 0x0000ff,
+        wireframe: true,
+    })
+)
+targetDirectionIndicatorR.translateZ(-1.5)
+targetDirectionIndicatorR.translateX(0.11)
+targetDirectionIndicatorR.rotateY(Math.PI / 4)
+teleportVR.target.add(targetDirectionIndicatorR)
+
+teleportVR.useDefaultDirectionHelper(false)
+
+//custom TeleportVR Curve material
+const curveMaterial = new THREE.ShaderMaterial({
+    uniforms: uniforms,
+    vertexShader: (document.getElementById('vertexShader') as HTMLElement).textContent as string,
+    fragmentShader: (document.getElementById('fragmentShader') as HTMLElement)
+        .textContent as string,
+    transparent: true,
+})
+teleportVR.curve.material = curveMaterial
+
 const statsVR = new StatsVR(scene, camera)
 statsVR.setX(0)
 statsVR.setY(0)
@@ -203,6 +263,8 @@ function render() {
     teleportVR.update(elevationsMeshList)
 
     const delta = clock.getDelta()
+
+    uniforms.time.value += delta
 
     bullets.forEach((b) => {
         if (b.visible) {
