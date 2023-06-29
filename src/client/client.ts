@@ -1,220 +1,132 @@
-import * as THREE from 'three'
-import StatsVR from 'statsvr'
-import { VRButton } from 'three/examples/jsm/webxr/VRButton'
-import GrabVR from './grabvr'
-import * as CANNON from 'cannon-es'
-//import CannonDebugRenderer from './utils/cannonDebugRenderer'
+import * as THREE from "three";
 
-const scene: THREE.Scene = new THREE.Scene()
+export default class GrabVR {
+  private _controller: { [id: number]: THREE.Object3D } = {};
+  private _raycaster: { [id: number]: THREE.Raycaster } = {};
+  private _quaternion: { [id: number]: THREE.Quaternion } = {};
+  private _grabbedObject: { [id: number]: THREE.Object3D } = {};
+  private _hasAGrabbedObject: { [id: number]: Boolean } = {};
+  private _line: { [id: number]: THREE.Object3D } = {};
+  private _grabberHook: { [id: number]: THREE.Mesh } = {};
+  private _gamepad: { [id: number]: Gamepad } = {};
+  private _grabableObjects: THREE.Object3D[] = [];
+  private _direction = new THREE.Vector3(0, -1, 0);
+  private _eventListeners: any[] = new Array();
 
-const camera: THREE.PerspectiveCamera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000)
-camera.position.set(0, 1.6, 3);
+  constructor() {}
 
-const renderer = new THREE.WebGLRenderer({ antialias: true })
-renderer.setPixelRatio(window.devicePixelRatio)
-renderer.setSize(window.innerWidth, window.innerHeight)
-renderer.xr.enabled = true
-document.body.appendChild(renderer.domElement)
+  public grabableObjects() {
+    return this._grabableObjects;
+  }
 
-document.body.appendChild(VRButton.createButton(renderer))
+  public add(id: number, o: THREE.Object3D, gamepad: Gamepad) {
+    this._controller[id] = o;
+    this._raycaster[id] = new THREE.Raycaster();
+    this._quaternion[id] = new THREE.Quaternion();
+    this._gamepad[id] = gamepad;
 
-window.addEventListener('resize', onWindowResize, false)
+    const points = [];
+    points.push(new THREE.Vector3(0, 0, 0));
+    points.push(new THREE.Vector3(0, -100, 0));
+    let geometry = new THREE.BufferGeometry().setFromPoints(points);
+    this._line[id] = new THREE.Line(
+      geometry,
+      new THREE.LineBasicMaterial({ color: 0x8888ff })
+    );
+    this._line[id].visible = false;
+    o.add(this._line[id]);
 
-function onWindowResize() {
-    camera.aspect = window.innerWidth / window.innerHeight
-    camera.updateProjectionMatrix()
-    renderer.setSize(window.innerWidth, window.innerHeight)
-}
+    this._grabberHook[id] = new THREE.Mesh(
+      new THREE.SphereGeometry(0.1, 6, 6),
+      new THREE.MeshBasicMaterial({
+        color: 0x00ff00,
+        wireframe: false,
+        depthTest: false,
+        depthWrite: false,
+        transparent: true,
+        opacity: 0.5,
+      })
+    );
 
-const world = new CANNON.World()
-world.gravity.set(0, -9.82, 0)
-//world.broadphase = new CANNON.NaiveBroadphase()
-//world.solver.iterations = 10
-//world.allowSleep = true
+    o.add(this._grabberHook[id]);
+    this._grabberHook[id].visible = false;
+  }
 
-const meshes: THREE.Mesh[] = []
-const bodies: CANNON.Body[] = []
+  public update(dt: number) {
+    for (let key in Object.keys(this._controller)) {
+      this._controller[key].getWorldPosition(this._raycaster[key].ray.origin);
+      this._controller[key].getWorldQuaternion(this._quaternion[key]);
+      this._raycaster[key].ray.direction
+        .copy(this._direction)
+        .applyEuler(
+          new THREE.Euler().setFromQuaternion(this._quaternion[key], "XYZ")
+        );
 
-const grabVR = new GrabVR()
-grabVR.addEventListener("grabStart", (id: number) => { console.log("grabStart " + id) })
-grabVR.addEventListener("grabEnd", (id: number) => { console.log("grabEnd " + id) })
-grabVR.addEventListener("grabMove", (id: number) => { console.log("grabMove " + id) })
+      let intersects = this._raycaster[key].intersectObjects(
+        this._grabableObjects
+      );
+      if (intersects.length > 0) {
+        this._line[key].visible = true;
 
+        if (this._gamepad[key].buttons[1].pressed) {
+          if (!this._hasAGrabbedObject[key]) {
+            this._grabberHook[key].position.copy(
+              this._controller[key].worldToLocal(intersects[0].object.position)
+            );
+            this._grabbedObject[key] = intersects[0].object;
+            this._grabbedObject[key].userData.isGrabbed = true;
+            this._grabberHook[key].visible = true;
+            this._hasAGrabbedObject[key] = true;
+            this.dispatchEvent("grabStart", Number(key));
+          }
 
-//floor
-const planeGeometry: THREE.PlaneGeometry = new THREE.PlaneGeometry(25, 25, 10, 10)
-const planeMesh: THREE.Mesh = new THREE.Mesh(planeGeometry, new THREE.MeshBasicMaterial({
-    color: 0x008800,
-    wireframe: true
-}))
-planeMesh.rotateX(-Math.PI / 2)
-scene.add(planeMesh)
-const planeShape = new CANNON.Plane()
-const planeBody = new CANNON.Body({ mass: 0 })
-planeBody.addShape(planeShape)
-planeBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2)
-world.addBody(planeBody)
+          if (this._gamepad[key].axes[3] > 0.25) {
+            if (this._grabberHook[key].position.y <= -1) {
+              this._grabberHook[key].translateY(
+                this._gamepad[key].axes[3] * dt * 10
+              );
+            }
+          } else {
+            this._grabberHook[key].translateY(
+              this._gamepad[key].axes[3] * dt * 10
+            );
+          }
 
-
-//  cubes
-for (var i = 0; i < 20; i++) {
-    const grabable = new THREE.Mesh(
-        new THREE.BoxGeometry(1.0, 1.0, 1.0),
-        new THREE.MeshBasicMaterial({
-            color: 0xff0066,
-            wireframe: true
-        })
-    )
-    grabable.position.x = (Math.random() * 20) - 10
-    grabable.position.y = (Math.random() * 20) + 2
-    grabable.position.z = (Math.random() * 20) - 10
-    grabable.userData.isGrabbed = false
-
-    grabVR.grabableObjects().push(grabable);
-
-    scene.add(grabable);
-
-    const cubeShape = new CANNON.Box(new CANNON.Vec3(.5, .5, .5))
-    const cubeBody = new CANNON.Body({ mass: 1 });
-    cubeBody.addShape(cubeShape)
-    cubeBody.position.x = grabable.position.x
-    cubeBody.position.y = grabable.position.y
-    cubeBody.position.z = grabable.position.z
-    world.addBody(cubeBody)
-
-    meshes.push(grabable)
-    bodies.push(cubeBody)
-}
-//  spheres
-for (var i = 0; i < 20; i++) {
-    const grabable = new THREE.Mesh(
-        new THREE.SphereGeometry(.5, 6, 6),
-        new THREE.MeshBasicMaterial({
-            color: 0x0099ff,
-            wireframe: true
-        })
-    )
-    grabable.position.x = (Math.random() * 20) - 10
-    grabable.position.y = (Math.random() * 20) + 2
-    grabable.position.z = (Math.random() * 20) - 10
-    grabable.userData.isGrabbed = false
-
-    grabVR.grabableObjects().push(grabable);
-
-    scene.add(grabable);
-
-    const sphereShape = new CANNON.Sphere(.5)
-    const sphereBody = new CANNON.Body({ mass: 1 });
-    sphereBody.addShape(sphereShape)
-    sphereBody.position.x = grabable.position.x
-    sphereBody.position.y = grabable.position.y
-    sphereBody.position.z = grabable.position.z
-    world.addBody(sphereBody)
-
-    meshes.push(grabable)
-    bodies.push(sphereBody)
-}
-//  cones
-for (var i = 0; i < 20; i++) {
-    const grabable = new THREE.Mesh(
-        new THREE.CylinderGeometry(0, 1, 1, 5),
-        new THREE.MeshBasicMaterial({
-            color: 0xffcc00,
-            wireframe: true
-        })
-    )
-    grabable.position.x = (Math.random() * 20) - 10
-    grabable.position.y = (Math.random() * 20) + 2
-    grabable.position.z = (Math.random() * 20) - 10
-    grabable.userData.isGrabbed = false
-
-    grabVR.grabableObjects().push(grabable);
-
-    scene.add(grabable);
-
-    const cylinderShape = new CANNON.Cylinder(.01, 1, 1, 5)
-    const cylinderBody = new CANNON.Body({ mass: 1 });
-    const cylinderQuaternion = new CANNON.Quaternion()
-    cylinderQuaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2)
-    cylinderBody.addShape(cylinderShape, new CANNON.Vec3, cylinderQuaternion)
-    cylinderBody.position.x = grabable.position.x
-    cylinderBody.position.y = grabable.position.y
-    cylinderBody.position.z = grabable.position.z
-    world.addBody(cylinderBody)
-
-    meshes.push(grabable)
-    bodies.push(cylinderBody)
-}
-
-const lefthand = new THREE.Mesh(
-    new THREE.CylinderGeometry(.05, 0.05, .4, 16, 1, true),
-    new THREE.MeshBasicMaterial({
-        color: 0x00ff88,
-        wireframe: true
-    })
-)
-
-const controllerGrip0 = renderer.xr.getControllerGrip(0)
-controllerGrip0.addEventListener('connected', (e: any) => {
-    controllerGrip0.add(lefthand)
-    grabVR.add(0, controllerGrip0, e.data.gamepad)
-    scene.add(controllerGrip0)
-})
-
-const righthand = new THREE.Mesh(
-    new THREE.CylinderGeometry(.05, 0.05, .4, 16, 1, true),
-    new THREE.MeshBasicMaterial({
-        color: 0x00ff88,
-        wireframe: true
-    })
-)
-const controllerGrip1 = renderer.xr.getControllerGrip(1)
-controllerGrip1.addEventListener('connected', (e: any) => {
-    controllerGrip1.add(righthand)
-    grabVR.add(1, controllerGrip1, e.data.gamepad)
-    scene.add(controllerGrip1)
-})
-
-const statsVR = new StatsVR(scene, camera)
-statsVR.setX(0)
-statsVR.setY(0)
-statsVR.setZ(-2)
-
-const clock: THREE.Clock = new THREE.Clock()
-
-//const cannonDebugRenderer = new CannonDebugRenderer(scene, world)
-
-function render() {
-
-    statsVR.update()
-
-    let delta = clock.getDelta()
-    if (delta > .01) delta = .01
-    world.step(delta)
-    //cannonDebugRenderer.update()
-
-
-    meshes.forEach((m, i) => {
-        if (!m.userData.isGrabbed) {
-            m.position.set(bodies[i].position.x, bodies[i].position.y, bodies[i].position.z)
-            m.quaternion.set(bodies[i].quaternion.x, bodies[i].quaternion.y, bodies[i].quaternion.z, bodies[i].quaternion.w)
-        } else {
-            bodies[i].position.x = m.position.x
-            bodies[i].position.y = m.position.y
-            bodies[i].position.z = m.position.z
-            bodies[i].quaternion.x = m.quaternion.x
-            bodies[i].quaternion.y = m.quaternion.y
-            bodies[i].quaternion.z = m.quaternion.z
-            bodies[i].quaternion.w = m.quaternion.w
-            bodies[i].velocity.set(0, 0, 0);
-            bodies[i].angularVelocity.set(0, 0, 0);
+          this.dispatchEvent("grabMove", Number(key));
         }
-    })
+      } else {
+        this._line[key].visible = false;
+      }
 
-    grabVR.update(delta)
+      if (!this._gamepad[key].buttons[1].pressed) {
+        if (this._hasAGrabbedObject[key]) {
+          if (this._hasAGrabbedObject[key]) {
+            this._hasAGrabbedObject[key] = false;
+            this._grabberHook[key].visible = false;
+            this._grabbedObject[key].userData.isGrabbed = false;
+            this.dispatchEvent("grabEnd", Number(key));
+          }
+        }
+      }
 
-    renderer.render(scene, camera)
+      if (this._hasAGrabbedObject[key]) {
+        this._grabberHook[key].getWorldPosition(
+          this._grabbedObject[key].position
+        );
+      }
+    }
+  }
 
+  public addEventListener(type: string, eventHandler: any) {
+    const listener = { type: type, eventHandler: eventHandler };
+    this._eventListeners.push(listener);
+  }
+
+  public dispatchEvent(type: string, id: number) {
+    for (let i = 0; i < this._eventListeners.length; i++) {
+      if (type === this._eventListeners[i].type) {
+        this._eventListeners[i].eventHandler(id);
+      }
+    }
+  }
 }
-
-renderer.setAnimationLoop(render)
