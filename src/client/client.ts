@@ -1,6 +1,8 @@
 import * as THREE from 'three'
 import StatsVR from 'statsvr'
 import { VRButton } from 'three/examples/jsm/webxr/VRButton'
+import { Font, FontLoader } from 'three/examples/jsm/loaders/FontLoader'
+import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry'
 import ButtonVR from './buttonvr'
 
 const scene: THREE.Scene = new THREE.Scene()
@@ -41,54 +43,81 @@ const floor: THREE.Mesh = new THREE.Mesh(
 floor.rotateX(-Math.PI / 2)
 scene.add(floor)
 
-const buttonVR = new ButtonVR(scene, camera)
+const buttonVR = new ButtonVR(scene, camera, 500)
 buttonVR.addEventListener('pressedStart', (intersection: THREE.Intersection) => {
-    console.log('pressedStart')
+    //console.log("pressedStart")
 })
 buttonVR.addEventListener('pressed', (intersection: THREE.Intersection) => {
-    console.log('pressed')
+    //console.log("pressed")
     statsVR.setCustom1(intersection.object.name)
+    screenText += intersection.object.name
+    regenerateGeometry()
 })
 buttonVR.addEventListener('pressedEnd', () => {
-    console.log('pressedEnd')
+    //console.log("pressedEnd")
     statsVR.setCustom1('')
 })
 
-const box = new THREE.Mesh(
-    new THREE.BoxGeometry(1, 1, 1),
-    new THREE.MeshBasicMaterial({
-        color: 0xff0066,
-        wireframe: true,
-    })
-)
-box.name = 'box'
-box.position.set(-2, 0.5, -4)
-scene.add(box)
-buttonVR.buttons.push(box)
+const keys = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
+let font: Font
 
-const sphere = new THREE.Mesh(
-    new THREE.SphereGeometry(0.5, 8, 8),
-    new THREE.MeshBasicMaterial({
-        color: 0x00ff66,
-        wireframe: true,
-    })
-)
-sphere.name = 'sphere'
-sphere.position.set(0, 0.5, -4)
-scene.add(sphere)
-buttonVR.buttons.push(sphere)
+const loader = new FontLoader()
+loader.load('fonts/gentilis_regular.typeface.json', function (f:Font) {
+    keys.forEach((k, i) => {
+        font = f
+        const keyCube = new THREE.Mesh(
+            new THREE.BoxGeometry(0.66, 0.66, 0.33),
+            new THREE.MeshBasicMaterial({
+                color: 0xff0066,
+                transparent: true,
+                opacity: 0.5,
+            })
+        )
+        keyCube.name = k
+        keyCube.position.set(0, 0.75, -4)
 
-const pyramid = new THREE.Mesh(
-    new THREE.ConeGeometry(0.66, 1, 4),
-    new THREE.MeshBasicMaterial({
-        color: 0xffff00,
-        wireframe: true,
+        let textGeometry = new TextGeometry(k, {
+            font: f,
+            size: 0.5,
+            height: 0.2,
+            curveSegments: 2,
+        })
+        const textMesh = new THREE.Mesh(
+            textGeometry,
+            new THREE.MeshBasicMaterial({ color: 0x00ffff })
+        )
+        textMesh.position.set(-0.18, 0.55, -4)
+
+        const keyCubePivot = new THREE.Object3D()
+        keyCubePivot.add(keyCube)
+        keyCubePivot.add(textMesh)
+        keyCubePivot.rotateY((-Math.PI / 16) * i + Math.PI / 4)
+
+        scene.add(keyCubePivot)
+
+        buttonVR.buttons.push(keyCube)
     })
+})
+
+let screenText = ''
+const screenTextMesh = new THREE.Mesh(
+    new THREE.BufferGeometry(),
+    new THREE.MeshBasicMaterial({ color: 0x8888ff })
 )
-pyramid.name = 'pyramid'
-pyramid.position.set(2, 0.5, -4)
-scene.add(pyramid)
-buttonVR.buttons.push(pyramid)
+screenTextMesh.position.set(0, 1.5, -5)
+scene.add(screenTextMesh)
+
+function regenerateGeometry() {
+    let newGeometry = new TextGeometry(screenText, {
+        font: font,
+        size: 2,
+        height: 0.2,
+        curveSegments: 2,
+    })
+    newGeometry.center()
+    screenTextMesh.geometry.dispose()
+    screenTextMesh.geometry = newGeometry
+}
 
 const statsVR = new StatsVR(scene, camera)
 statsVR.setX(0)
